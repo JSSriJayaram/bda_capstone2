@@ -1,0 +1,8 @@
+venv
+venv/
+
+data/csv/*
+!data/csv/.gitkeep
+
+.DS_Store
+.ipynb_checkpoints
