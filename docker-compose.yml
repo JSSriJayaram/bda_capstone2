@@ -1,0 +1,78 @@
+services:
+    namenode:
+        image: apache/hadoop:3.3.6
+        platform: linux/amd64
+        hostname: namenode
+        container_name: taxi-namenode
+        command: ["hdfs", "namenode"]
+        ports:
+            - "9871:9870"
+            - "8021:8020"
+        env_file: ./hadoop.env
+        environment:
+            - ENSURE_NAMENODE_DIR=/data/name/current
+        volumes:
+            - taxi_namenode_data:/data
+
+    datanode:
+        image: apache/hadoop:3.3.6
+        platform: linux/amd64
+        hostname: datanode
+        container_name: taxi-datanode
+        command: ["hdfs", "datanode"]
+        env_file: ./hadoop.env
+        depends_on:
+            - namenode
+        volumes:
+            - taxi_datanode_data:/data
+
+    resourcemanager:
+        image: apache/hadoop:3.3.6
+        platform: linux/amd64
+        hostname: resourcemanager
+        container_name: taxi-resourcemanager
+        command: ["yarn", "resourcemanager"]
+        ports:
+            - "8089:8088"
+        env_file: ./hadoop.env
+        depends_on:
+            - namenode
+            - datanode
+
+    nodemanager:
+        image: apache/hadoop:3.3.6
+        platform: linux/amd64
+        hostname: nodemanager
+        container_name: taxi-nodemanager
+        command: ["yarn", "nodemanager"]
+        env_file: ./hadoop.env
+        depends_on:
+            - resourcemanager
+
+    hive-server:
+        image: apache/hive:3.1.3
+        platform: linux/amd64
+        hostname: hive-server
+        container_name: taxi-hive-server
+        env_file: ./hadoop.env
+        depends_on:
+            - namenode
+            - datanode
+            - resourcemanager
+            - nodemanager
+        environment:
+            SERVICE_NAME: metastore
+            IS_RESUME: "false"
+        volumes:
+            - ./hive/conf/hive-site.xml:/opt/hive/conf/hive-site.xml
+            - ./hive/conf/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+            - ./hive/conf/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+            - ./hive/conf/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml
+            - ./hive/conf/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml
+            - ./hive/taxi_analytics.sql:/tmp/taxi_analytics.sql
+        ports:
+            - "9084:9083"
+
+volumes:
+    taxi_namenode_data:
+    taxi_datanode_data:
