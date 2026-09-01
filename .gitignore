@@ -23,19 +23,19 @@ mapreduce/target/
 # ── Pipeline results (regenerated each run) ──────────────────
 results/
 
-# ── analysis/bda/ — local dev scratch, logs, compiled output ─
-analysis/bda/build_classes/
-analysis/bda/hourly_classes/
-analysis/bda/hourly_output/
-analysis/bda/output/
-analysis/bda/output_link
-analysis/bda/derby.log
-analysis/bda/yellow_tripdata_sample_for_hadoop.csv
-analysis/bda/hive/logs/
-analysis/bda/hive/scratch/
-analysis/bda/hive/warehouse/
-analysis/bda/hive/metastore/
-analysis/bda/hive/hiveserver2.log
-analysis/bda/hive/hiveserver2.pid
-analysis/bda/hive/hs2*.log
-analysis/bda/local-conf/
+# ── scripts/local_mode/ — local dev scratch, logs, compiled output ─
+scripts/local_mode/build_classes/
+scripts/local_mode/hourly_classes/
+scripts/local_mode/hourly_output/
+scripts/local_mode/output/
+scripts/local_mode/output_link
+scripts/local_mode/derby.log
+scripts/local_mode/yellow_tripdata_sample_for_hadoop.csv
+scripts/local_mode/hive/logs/
+scripts/local_mode/hive/scratch/
+scripts/local_mode/hive/warehouse/
+scripts/local_mode/hive/metastore/
+scripts/local_mode/hive/hiveserver2.log
+scripts/local_mode/hive/hiveserver2.pid
+scripts/local_mode/hive/hs2*.log
+scripts/local_mode/local-conf/

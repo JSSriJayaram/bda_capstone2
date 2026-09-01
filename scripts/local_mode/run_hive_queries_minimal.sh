@@ -8,17 +8,17 @@
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 export HADOOP_HOME=/opt/hadoop
 export HIVE_HOME=/opt/hive
-export HIVE_CONF_DIR=/home/real/bda/hive/conf
+export HIVE_CONF_DIR=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/conf
 export PATH=$PATH:$HIVE_HOME/bin:$HADOOP_HOME/bin
 
 # Set full JVM reflection opens for Java 17 + Kryo serialization in Hive 4
 export JAVA_TOOL_OPTIONS="--add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.math=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED"
 
 pkill -9 -f hiveserver2 2>/dev/null || true
-rm -f /home/real/bda/hive/conf/hiveserver2.pid 2>/dev/null || true
+rm -f /Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/conf/hiveserver2.pid 2>/dev/null || true
 
 echo "[INFO] Starting HiveServer2..."
-hiveserver2 > /home/real/bda/hive/hs2_java17.log 2>&1 &
+hiveserver2 > /Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/hs2_java17.log 2>&1 &
 HS2_PID=$!
 
 echo "[INFO] HiveServer2 PID: $HS2_PID. Waiting for port 10000..."
@@ -43,12 +43,12 @@ echo "============================================================"
 echo "          RUNNING HIVE QUERIES VIA BEELINE CLI             "
 echo "============================================================"
 
-OUT="/home/real/bda/output/hive_results"
+OUT="/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output/hive_results"
 mkdir -p "$OUT"
 
 # 1. Setup DB & Table
 echo "[SETUP] Executing taxi_analytics.sql..."
-beeline -u "jdbc:hive2://127.0.0.1:10000" -f /home/real/bda/hive/taxi_analytics.sql
+beeline -u "jdbc:hive2://127.0.0.1:10000" -f /Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/taxi_analytics.sql
 
 echo ""
 echo "[QUERY] Q1 — Total Number of Taxi Trips"

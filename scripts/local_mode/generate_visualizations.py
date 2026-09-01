@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 # Setup output directory
-viz_dir = "/home/real/bda/output/visualizations"
+viz_dir = "/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output/visualizations"
 os.makedirs(viz_dir, exist_ok=True)
 
 # Set global dark/modern styling for matplotlib
@@ -19,7 +19,7 @@ print("[INFO] Generating analytical charts from MapReduce & Hive outputs...")
 # ------------------------------------------------------------
 # 1. HOURLY DEMAND & REVENUE (MapReduce Hourly Output)
 # ------------------------------------------------------------
-hourly_file = "/home/real/bda/output/hourly_performance/part-r-00000"
+hourly_file = "/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output/hourly_performance/part-r-00000"
 if os.path.exists(hourly_file):
     cols = ['hour', 'trips', 'revenue', 'avg_rev', 'avg_pass', 'avg_dur', 'avg_tip', 'tip_pct']
     df_hourly = pd.read_csv(hourly_file, sep='\t', names=cols)
@@ -49,7 +49,7 @@ if os.path.exists(hourly_file):
 # ------------------------------------------------------------
 # 2. TOP 10 BUSIEST VS REVENUE ZONES (Hive & MapReduce Zone Output)
 # ------------------------------------------------------------
-q4_file = "/home/real/bda/output/hive_results/q4_top20_busiest_zones.csv"
+q4_file = "/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output/hive_results/q4_top20_busiest_zones.csv"
 if os.path.exists(q4_file):
     df_q4 = pd.read_csv(q4_file).head(10)
     df_q4['zone_label'] = 'Zone ' + df_q4['PULocationID'].astype(str)
@@ -74,7 +74,7 @@ if os.path.exists(q4_file):
 # ------------------------------------------------------------
 # 3. PAYMENT TYPE SHARE (Hive Q10 Output)
 # ------------------------------------------------------------
-q10_file = "/home/real/bda/output/hive_results/q10_payment_types.csv"
+q10_file = "/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output/hive_results/q10_payment_types.csv"
 if os.path.exists(q10_file):
     df_q10 = pd.read_csv(q10_file)
     colors = ['#00e5ff', '#ff9100', '#ff1744', '#d500f9', '#76ff03']
@@ -99,7 +99,7 @@ if os.path.exists(q10_file):
 # ------------------------------------------------------------
 # 4. WEEKDAY VS WEEKEND METRICS (Hive Q9 Output)
 # ------------------------------------------------------------
-q9_file = "/home/real/bda/output/hive_results/q9_weekday_vs_weekend.csv"
+q9_file = "/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output/hive_results/q9_weekday_vs_weekend.csv"
 if os.path.exists(q9_file):
     df_q9 = pd.read_csv(q9_file)
     
@@ -128,7 +128,7 @@ if os.path.exists(q9_file):
 # ------------------------------------------------------------
 # 5. MONTHLY PERFORMANCE TRENDS (Hive Q12 Output)
 # ------------------------------------------------------------
-q12_file = "/home/real/bda/output/hive_results/q12_monthly_breakdown.csv"
+q12_file = "/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output/hive_results/q12_monthly_breakdown.csv"
 if os.path.exists(q12_file):
     df_q12 = pd.read_csv(q12_file)
     df_q12['month_name'] = ['Jan 2026', 'Feb 2026', 'Mar 2026'][:len(df_q12)]

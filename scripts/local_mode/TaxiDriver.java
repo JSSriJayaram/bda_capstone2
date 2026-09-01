@@ -13,8 +13,8 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
  * Usage:
  *   hadoop jar taxi-analysis.jar <input_hdfs_path> <output_hdfs_path>
  *
- * Example (sample):
- *   hadoop jar taxi-analysis.jar /user/bda/taxi/sample/yellow_tripdata_sample.csv /user/bda/taxi/mapreduce/zone_performance_sample
+ * Example:
+ *   hadoop jar taxi-analysis.jar /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/zone_performance
  *
  * Example (full dataset, default if no args):
  *   hadoop jar taxi-analysis.jar

@@ -11,17 +11,17 @@ set -e
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 export HADOOP_HOME=/opt/hadoop
 export HIVE_HOME=/opt/hive
-export HIVE_CONF_DIR=/home/real/bda/hive/conf
+export HIVE_CONF_DIR=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/conf
 export PATH=$PATH:$HIVE_HOME/bin:$HADOOP_HOME/bin
-export HADOOP_CONF_DIR=/home/real/bda/local-conf
+export HADOOP_CONF_DIR=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/local-conf
 export HADOOP_CLIENT_OPTS='-Xmx4g'
 
 # Derby tmp dir in /home to avoid root disk full
 export DERBY_HOME=/opt/hive/lib
-mkdir -p /home/real/bda/hive/scratch /home/real/bda/hive/logs /home/real/bda/hive/output
+mkdir -p /Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/scratch /Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/logs /Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/output
 
-HIVE_CMD="hive --hiveconf hive.execution.engine=mr --hiveconf hive.conf.dir=/home/real/bda/hive/conf"
-OUT=/home/real/bda/hive/output
+HIVE_CMD="hive --hiveconf hive.execution.engine=mr --hiveconf hive.conf.dir=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/conf"
+OUT=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/output
 
 echo ""
 echo "============================================================"
@@ -33,7 +33,7 @@ echo ""
 echo "------------------------------------------------------------"
 echo " Q0: Setting up Database & Loading Data..."
 echo "------------------------------------------------------------"
-$HIVE_CMD -f /home/real/bda/hive/taxi_analytics.sql 2>/dev/null
+$HIVE_CMD -f /Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/taxi_analytics.sql 2>/dev/null
 echo "[OK] Database and table created."
 echo ""
 
@@ -99,7 +99,7 @@ run_query "Q10: Payment Type Analysis" \
     "SELECT CASE WHEN payment_type = 1 THEN 'Credit Card' WHEN payment_type = 2 THEN 'Cash' WHEN payment_type = 3 THEN 'No Charge' WHEN payment_type = 4 THEN 'Dispute' ELSE 'Unknown' END AS payment_method, COUNT(*) AS trip_count, ROUND(SUM(total_amount), 2) AS total_revenue, ROUND(AVG(tip_amount), 2) AS avg_tip, ROUND(AVG(total_amount), 2) AS avg_fare FROM taxi_trips GROUP BY payment_type ORDER BY trip_count DESC;" \
     "q10_payment_types.txt"
 
-# ---- Q11: High-Volume Zones (> 500 trips in sample) ----
+# ---- Q11: High-Volume Zones (> 10,000 trips in full dataset) ----
 run_query "Q11: High-Volume Zones (>500 trips)" \
     "SELECT PULocationID, COUNT(*) AS trip_count, ROUND(AVG(total_amount), 2) AS avg_total_amount, ROUND(AVG(tip_amount), 2) AS avg_tip, ROUND(SUM(total_amount), 2) AS total_revenue FROM taxi_trips GROUP BY PULocationID HAVING COUNT(*) > 500 ORDER BY trip_count DESC;" \
     "q11_high_volume_zones.txt"

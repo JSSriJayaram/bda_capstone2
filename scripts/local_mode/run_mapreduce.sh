@@ -15,15 +15,15 @@ echo ""
 # ---- Environment Setup ----
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 export HADOOP_HOME=/opt/hadoop
-export HADOOP_CONF_DIR=/home/real/bda/local-conf
+export HADOOP_CONF_DIR=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/local-conf
 export PATH=$PATH:$HADOOP_HOME/bin
 
-INPUT=/home/real/bda/yellow_tripdata_sample_for_hadoop.csv
-[ ! -f "$INPUT" ] && INPUT=/home/real/bda/taxi_30mb.csv
+INPUT=../../data/csv/yellow_tripdata_cleaned.csv
+[ ! -f "$INPUT" ] && INPUT=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/taxi_30mb.csv
 
-OUTPUT_DIR=/home/real/bda/output
-BUILD_DIR=/home/real/bda/build_classes
-JAR=/home/real/bda/all-taxi-jobs.jar
+OUTPUT_DIR=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output
+BUILD_DIR=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/build_classes
+JAR=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/all-taxi-jobs.jar
 
 if [ ! -f "$INPUT" ]; then
     echo "[ERROR] Input file not found."
@@ -32,7 +32,7 @@ fi
 
 echo "[INFO] Compiling Java classes..."
 mkdir -p "$BUILD_DIR" "$OUTPUT_DIR"
-javac -cp "$HADOOP_HOME/share/hadoop/common/*:$HADOOP_HOME/share/hadoop/mapreduce/*:$HADOOP_HOME/share/hadoop/common/lib/*" -d "$BUILD_DIR" /home/real/bda/*.java
+javac -cp "$HADOOP_HOME/share/hadoop/common/*:$HADOOP_HOME/share/hadoop/mapreduce/*:$HADOOP_HOME/share/hadoop/common/lib/*" -d "$BUILD_DIR" /Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/*.java
 jar -cf "$JAR" -C "$BUILD_DIR" .
 
 echo ""

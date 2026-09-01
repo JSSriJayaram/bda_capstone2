@@ -43,7 +43,7 @@
   <!-- Use embedded Derby metastore stored in /home -->
   <property>
     <name>javax.jdo.option.ConnectionURL</name>
-    <value>jdbc:derby:;databaseName=/home/real/bda/hive/metastore/metastore_db;create=true</value>
+    <value>jdbc:derby:;databaseName=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/metastore/metastore_db;create=true</value>
   </property>
 
   <property>
@@ -54,23 +54,23 @@
   <!-- Warehouse dir in /home -->
   <property>
     <name>hive.metastore.warehouse.dir</name>
-    <value>file:///home/real/bda/hive/warehouse</value>
+    <value>file:///Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/warehouse</value>
   </property>
 
   <!-- Scratch dirs in /home -->
   <property>
     <name>hive.exec.scratchdir</name>
-    <value>/home/real/bda/hive/scratch</value>
+    <value>/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/scratch</value>
   </property>
 
   <property>
     <name>hive.exec.local.scratchdir</name>
-    <value>/home/real/bda/hive/scratch</value>
+    <value>/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/scratch</value>
   </property>
 
   <property>
     <name>hive.downloaded.resources.dir</name>
-    <value>/home/real/bda/hive/scratch</value>
+    <value>/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/scratch</value>
   </property>
 
   <!-- Disable schema verification for embedded Derby -->

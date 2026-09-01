@@ -31,8 +31,9 @@ bda_capstone2/
 │   ├── run_hive_queries.sh         # Script to run all 12 queries
 │   └── conf/                       # Hive/Hadoop XML configs
 ├── analysis/
-│   ├── generate_visualizations.py  # Produces 6 charts → visualizations/
-│   └── bda/                        # Local dev scratch (gitignored outputs)
+│   └── generate_visualizations.py  # Produces 6 charts → visualizations/
+├── scripts/
+│   └── local_mode/                 # Legacy non-Docker local scripts
 ├── visualizations/                 # ← Charts live HERE (committed, easy access)
 │   ├── hourly_demand_revenue.png
 │   ├── top_pickup_zones.png

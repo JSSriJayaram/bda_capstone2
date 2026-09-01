@@ -1,7 +1,7 @@
 -- ============================================================
 --   taxi_analytics.sql
 --   Setup Database & Table for NYC Taxi Analytics (Hive)
---   Dataset: yellow_tripdata_sample_for_hadoop.csv
+--   Dataset: yellow_tripdata_cleaned.csv
 -- ============================================================
 
 -- Drop and recreate database
@@ -49,5 +49,5 @@ STORED AS TEXTFILE
 TBLPROPERTIES ("skip.header.line.count"="1");
 
 -- Load data from local CSV
-LOAD DATA LOCAL INPATH '/home/real/bda/yellow_tripdata_sample_for_hadoop.csv'
+LOAD DATA LOCAL INPATH '/Users/s4n/Documents/clg/sem7/bda_capstone2/data/csv/yellow_tripdata_cleaned.csv'
 OVERWRITE INTO TABLE taxi_trips;

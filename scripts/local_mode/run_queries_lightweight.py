@@ -3,14 +3,14 @@ import pandas as pd
 import os
 
 # Ensure temp directory is on /home partition where there is 63GB free space
-os.environ['TMPDIR'] = '/home/real/bda/hive/scratch'
-temp_dir = '/home/real/bda/hive/scratch'
+os.environ['TMPDIR'] = '/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/scratch'
+temp_dir = '/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/hive/scratch'
 os.makedirs(temp_dir, exist_ok=True)
 
-output_dir = "/home/real/bda/output/hive_results"
+output_dir = "/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output/hive_results"
 os.makedirs(output_dir, exist_ok=True)
 
-csv_path = "/home/real/bda/yellow_tripdata_sample_for_hadoop.csv"
+csv_path = "../../data/csv/yellow_tripdata_cleaned.csv"
 print(f"[INFO] Loading dataset ({csv_path}) into lightweight SQLite database...")
 
 df = pd.read_csv(csv_path)
