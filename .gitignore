@@ -1,0 +1,6 @@
+mapreduce/target/
+results/
+data/processed/yellow_tripdata_cleaned.csv
+*.class
+*.jar
+.DS_Store
