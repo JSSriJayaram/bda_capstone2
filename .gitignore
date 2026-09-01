@@ -1,16 +1,41 @@
-venv
+# ── Python ────────────────────────────────────────────────────
 venv/
+__pycache__/
+*.pyc
+*.pyo
 
+# ── Data (large files, not committed) ────────────────────────
 data/csv/*
 !data/csv/.gitkeep
-
 data/processed/*
 !data/processed/.gitkeep
 
+# ── OS / Editor ───────────────────────────────────────────────
 .DS_Store
 .ipynb_checkpoints
+*.swp
 
-mapreduce/target/
-results/
+# ── Java build artefacts ──────────────────────────────────────
 *.class
 *.jar
+mapreduce/target/
+
+# ── Pipeline results (regenerated each run) ──────────────────
+results/
+
+# ── analysis/bda/ — local dev scratch, logs, compiled output ─
+analysis/bda/build_classes/
+analysis/bda/hourly_classes/
+analysis/bda/hourly_output/
+analysis/bda/output/
+analysis/bda/output_link
+analysis/bda/derby.log
+analysis/bda/yellow_tripdata_sample_for_hadoop.csv
+analysis/bda/hive/logs/
+analysis/bda/hive/scratch/
+analysis/bda/hive/warehouse/
+analysis/bda/hive/metastore/
+analysis/bda/hive/hiveserver2.log
+analysis/bda/hive/hiveserver2.pid
+analysis/bda/hive/hs2*.log
+analysis/bda/local-conf/

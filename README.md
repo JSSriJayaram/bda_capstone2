@@ -1,32 +1,51 @@
 # NYC Yellow Taxi — Big Data Analytics Pipeline
 
-A complete, reproducible Big Data Analytics pipeline using **Apache Hadoop 3.3.6 YARN + MapReduce + Hive 3.1.3** running on Docker.
+A complete, reproducible Big Data Analytics pipeline using **Apache Hadoop 3.3.6 YARN + MapReduce + Hive 3.1.3** running on Docker, with Python-based visualization.
 
 **Dataset:** NYC Yellow Taxi (Jan–Mar 2026) · ~7.6 million records · 1.1 GB CSV  
-**Architecture:** HDFS → Java MapReduce (zone analytics) + Hive (12 analytical queries)
+**Architecture:** HDFS → Java MapReduce (zone analytics + hourly analytics) + Hive (12 analytical queries) + Python visualizations
 
 ---
 
 ## Project Structure
 
 ```
-bda2/
-├── docker-compose.yml          # 5-container Hadoop+Hive cluster
-├── hadoop.env                  # Shared Hadoop env variables
-├── data/processed/             # Sample CSV (full CSV not committed — see below)
+bda_capstone2/
+├── docker-compose.yml              # 5-container Hadoop+Hive cluster
+├── hadoop.env                      # Shared Hadoop env variables
+├── requirements.txt                # Python dependencies (pandas, matplotlib, …)
+├── run_analysis.sh                 # One-shot: install deps & run visualizations
+├── data/
+│   ├── csv/
+│   │   └── yellow_tripdata_cleaned.csv   # 1.1 GB cleaned dataset
+│   └── raw/                        # Source parquet files (gitignored)
 ├── mapreduce/
-│   ├── TaxiMapper.java         # Emits PULocationID → trip metrics
-│   ├── TaxiReducer.java        # Aggregates zone-level stats
-│   ├── TaxiDriver.java         # Job configuration
-│   ├── pom.xml                 # Maven build file
-│   └── target/taxi-analysis.jar   # Compiled JAR (built inside namenode)
+│   ├── TaxiMapper.java             # Emits PULocationID → trip metrics
+│   ├── TaxiReducer.java            # Aggregates zone-level stats
+│   ├── TaxiDriver.java             # Zone job configuration
+│   ├── HourlyTaxiMapper.java       # Emits pickup_hour → trip metrics
+│   ├── HourlyTaxiReducer.java      # Aggregates hourly stats
+│   └── HourlyTaxiDriver.java       # Hourly job configuration
 ├── hive/
-│   ├── taxi_analytics.sql      # All DDL + 12 HiveQL queries
-│   ├── run_hive_queries.sh     # Script to run all queries
-│   └── conf/                   # Hive/Hadoop XML configs
-└── results/
-    ├── mapreduce/zone_performance.tsv  # 261-zone MapReduce output
-    └── hive/all_queries_results.txt   # All 12 Hive query results
+│   ├── taxi_analytics.sql          # All DDL + 12 HiveQL queries
+│   ├── run_hive_queries.sh         # Script to run all 12 queries
+│   └── conf/                       # Hive/Hadoop XML configs
+├── analysis/
+│   ├── generate_visualizations.py  # Produces 6 charts → visualizations/
+│   └── bda/                        # Local dev scratch (gitignored outputs)
+├── visualizations/                 # ← Charts live HERE (committed, easy access)
+│   ├── hourly_demand_revenue.png
+│   ├── top_pickup_zones.png
+│   ├── payment_type_share.png
+│   ├── weekday_vs_weekend.png
+│   ├── monthly_revenue_trend.png
+│   └── zone_speed_vs_fare.png
+└── results/                        # Pipeline TSV/text outputs (gitignored)
+    ├── mapreduce/
+    │   ├── zone_performance.tsv
+    │   └── hourly_performance.tsv
+    └── hive/
+        └── all_queries_output.txt
 ```
 
 ---
@@ -190,7 +209,72 @@ docker exec taxi-namenode bash -c "
 
 ---
 
-## Step 5 — Run Hive Analytics
+## Step 5 — Compile & Run Hourly MapReduce Job
+
+This second MapReduce job aggregates **24-hour demand, revenue, and tip metrics** across all 7.6M trips.
+
+### 5.1 Copy source files (already done if you ran Step 4)
+
+```bash
+docker cp mapreduce/HourlyTaxiMapper.java taxi-namenode:/opt/taxi_mr/src/
+docker cp mapreduce/HourlyTaxiReducer.java taxi-namenode:/opt/taxi_mr/src/
+docker cp mapreduce/HourlyTaxiDriver.java  taxi-namenode:/opt/taxi_mr/src/
+```
+
+### 5.2 Recompile all classes into a combined JAR
+
+```bash
+docker exec taxi-namenode bash -c "
+  cd /opt/taxi_mr && rm -rf classes && mkdir -p classes && \
+  javac -encoding UTF-8 -cp \$(hadoop classpath) -d classes src/*.java && \
+  jar -cvf taxi-hourly.jar -C classes/ HourlyTaxiDriver.class \
+      -C classes/ HourlyTaxiMapper.class -C classes/ HourlyTaxiReducer.class
+"
+```
+
+### 5.3 Run Hourly Job
+
+```bash
+# Remove previous output if it exists
+docker exec taxi-namenode hdfs dfs -rm -r -f /user/bda/taxi/mapreduce/hourly_performance
+
+# Run
+docker exec taxi-namenode bash -c "
+  hadoop jar /opt/taxi_mr/taxi-hourly.jar HourlyTaxiDriver \
+    /user/bda/taxi/clean/yellow_tripdata_cleaned.csv \
+    /user/bda/taxi/mapreduce/hourly_performance
+"
+```
+
+> Takes ~2–3 minutes. Outputs 24 rows (one per hour).
+
+### 5.4 View Output
+
+```bash
+docker exec taxi-namenode hdfs dfs -cat /user/bda/taxi/mapreduce/hourly_performance/part-r-00000
+```
+
+**Output format (tab-separated):**
+
+```
+hour  total_trips  total_revenue  avg_revenue  avg_passengers  avg_duration  avg_tip  tip_pct
+18    552506       15702002.89    28.42        1.25            15.89         3.70     20.84%
+...
+```
+
+### 5.5 Save Results Locally
+
+```bash
+mkdir -p results/mapreduce
+docker exec taxi-namenode bash -c "
+  echo -e 'hour\ttotal_trips\ttotal_revenue\tavg_revenue\tavg_passengers\tavg_duration\tavg_tip\ttip_pct'
+  hdfs dfs -cat /user/bda/taxi/mapreduce/hourly_performance/part-r-00000
+" > results/mapreduce/hourly_performance.tsv
+```
+
+---
+
+## Step 6 — Run Hive Analytics
 
 ### ⚠️ Critical: Heap Size
 
@@ -307,7 +391,7 @@ Expected: `7637669`
 
 ---
 
-## Step 6 — Run All 12 Hive Queries
+## Step 7 — Run All 12 Hive Queries
 
 Run individually (recommended) with the 4 GB heap flag:
 
@@ -396,6 +480,38 @@ bash hive/run_hive_queries.sh
 
 ---
 
+## Step 8 — Generate Visualizations
+
+Produces **6 high-resolution charts** from the MapReduce and Hive outputs, saved to `visualizations/`.
+
+**Prerequisites:** Python 3 with `pandas` and `matplotlib` (install into the project venv):
+
+```bash
+source venv/bin/activate       # or: python3 -m venv venv && source venv/bin/activate
+pip install pandas matplotlib
+```
+
+**Run:**
+
+```bash
+python analysis/generate_visualizations.py
+# or use the convenience script:
+bash run_analysis.sh
+```
+
+**Charts produced:**
+
+| File | Description |
+| ---- | ----------- |
+| `hourly_demand_revenue.png` | Bar + line dual-axis: trip volume & revenue by hour (0–23) |
+| `top_pickup_zones.png` | Horizontal bar: top 10 busiest pickup zones |
+| `payment_type_share.png` | Donut chart: payment method market share (Q10) |
+| `weekday_vs_weekend.png` | Side-by-side bars: trip count & avg spend (Q9) |
+| `monthly_revenue_trend.png` | Line chart: Jan–Mar 2026 monthly revenue (Q12) |
+| `zone_speed_vs_fare.png` | Scatter: avg speed vs avg fare for all 261 zones |
+
+---
+
 ## Results Summary
 
 ### MapReduce — Zone Performance (`results/mapreduce/zone_performance.tsv`)
@@ -404,22 +520,39 @@ bash hive/run_hive_queries.sh
 - Metrics per zone: trips, revenue, avg fare, avg distance, avg duration, avg speed, avg tip
 - Top zone: **Zone 237** (408,094 trips), **Zone 132** top revenue ($31.9M)
 
-### Hive — 12 Analytical Queries (`results/hive/all_queries_results.txt`)
+### MapReduce — Hourly Performance (`results/mapreduce/hourly_performance.tsv`)
 
-| Query                                     | Result                                   |
-| ----------------------------------------- | ---------------------------------------- |
-| Q1 Total Trips                            | **7,637,669**                            |
-| Q2 Total Revenue                          | **$221,652,830.89**                      |
-| Q3 Avg Fare / Distance / Duration / Speed | $19.49 / 3.44 mi / 17.31 min / 10.62 mph |
-| Q4 Busiest Zone                           | Zone 237 — 408,094 trips                 |
-| Q5 Top Revenue Zone                       | Zone 132 (Airport) — $31.9M              |
-| Q6 Most Expensive Trip                    | Zone 64→131, $500 total                  |
-| Q7 Distance Range                         | 0.01 mi – 98.96 mi                       |
-| Q8 Peak Hour                              | 18:00 (552,506 trips)                    |
-| Q9 Weekday vs Weekend                     | 5.6M weekday / 2M weekend                |
-| Q10 Payment Split                         | 87.6% Credit Card                        |
-| Q11 High-volume zones                     | 57 zones with >10,000 trips              |
-| Q12 Monthly Trend                         | Mar highest (2,879,641 trips)            |
+- **24 hourly buckets** (00–23) across all 7.6M trips
+- Metrics per hour: trips, total revenue, avg revenue, avg passengers, avg duration, avg tip, tip %
+- Peak hour: **18:00** — 552,506 trips · $15.7M revenue · 20.84% tip rate
+
+### Hive — 12 Analytical Queries (`results/hive/all_queries_output.txt`)
+
+| Query | Result |
+| ----- | ------ |
+| Q1 Total Trips | **7,637,676** |
+| Q2 Total Revenue | **$221,653,148** |
+| Q3 Avg Fare / Distance / Duration / Speed | $29.54 / 3.44 mi / 17.3 min / 10.62 mph |
+| Q4 Busiest Zone | Zone 237 — 408,094 trips |
+| Q5 Top Revenue Zone | Zone 132 (Airport) — $31.9M |
+| Q6 Most Expensive Trip | Zone 64→131, $500 total |
+| Q7 Distance Range | 0.01 mi – 98.96 mi |
+| Q8 Peak Hour | 18:00 (552,506 trips) |
+| Q9 Weekday vs Weekend | 5.6M weekday / 2.0M weekend |
+| Q10 Payment Split | 87.6% Credit Card |
+| Q11 High-volume zones | 57 zones with >10,000 trips |
+| Q12 Monthly Trend | Mar highest (2,879,641 trips) |
+
+### Visualizations (`visualizations/`)
+
+6 charts auto-generated by `analysis/generate_visualizations.py`:
+
+- **hourly_demand_revenue.png** — dual-axis bar+line: trip volume & revenue per hour
+- **top_pickup_zones.png** — horizontal bar: top 10 busiest zones
+- **payment_type_share.png** — donut: 87.6% CC / 11.4% Cash / 1% other
+- **weekday_vs_weekend.png** — Weekday 5.63M trips vs Weekend 2.01M trips
+- **monthly_revenue_trend.png** — Jan $72.1M → Feb $65.8M → Mar $83.8M
+- **zone_speed_vs_fare.png** — scatter of 261 zones coloured by trip volume
 
 ---
 
@@ -472,18 +605,23 @@ Yellow Taxi CSV (1.1 GB)
          ▼
        HDFS (/user/bda/taxi/clean/)
          │
-    ┌────┴────┐
-    │         │
-    ▼         ▼
-MapReduce   Hive
-    │         │
-    │    taxi_trips_raw (External, CSV)
-    │         │
-    │    taxi_trips (Managed, ORC+Snappy)
-    │         │
-    ▼         ▼
-261 zones  12 Analytical Queries
-(TSV)      (Q1–Q12 results)
+    ┌────┴──────────┐
+    │               │
+    ▼               ▼
+MapReduce         Hive
+ ┌──┴──┐            │
+ │     │       taxi_trips_raw (External, CSV)
+ ▼     ▼            │
+Zone  Hourly   taxi_trips (Managed, ORC+Snappy)
+Stats Stats         │
+ │     │            ▼
+ │     │      12 Analytical Queries
+ └──┬──┘      (Q1–Q12 results)
+    │               │
+    └───────┬────────┘
+            ▼
+   Python Visualizations
+   (6 charts → visualizations/)
 ```
 
 **Docker Services:**

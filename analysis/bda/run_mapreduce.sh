@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# ============================================================
+#   NYC Taxi - Run Both MapReduce Jobs (Zone & Hourly)
+# ============================================================
+
+set -e
+
+echo ""
+echo "============================================================"
+echo "   NYC Taxi MapReduce Suite (Hadoop Local Mode)"
+echo "============================================================"
+echo ""
+
+# ---- Environment Setup ----
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+export HADOOP_HOME=/opt/hadoop
+export HADOOP_CONF_DIR=/home/real/bda/local-conf
+export PATH=$PATH:$HADOOP_HOME/bin
+
+INPUT=/home/real/bda/yellow_tripdata_sample_for_hadoop.csv
+[ ! -f "$INPUT" ] && INPUT=/home/real/bda/taxi_30mb.csv
+
+OUTPUT_DIR=/home/real/bda/output
+BUILD_DIR=/home/real/bda/build_classes
+JAR=/home/real/bda/all-taxi-jobs.jar
+
+if [ ! -f "$INPUT" ]; then
+    echo "[ERROR] Input file not found."
+    exit 1
+fi
+
+echo "[INFO] Compiling Java classes..."
+mkdir -p "$BUILD_DIR" "$OUTPUT_DIR"
+javac -cp "$HADOOP_HOME/share/hadoop/common/*:$HADOOP_HOME/share/hadoop/mapreduce/*:$HADOOP_HOME/share/hadoop/common/lib/*" -d "$BUILD_DIR" /home/real/bda/*.java
+jar -cf "$JAR" -C "$BUILD_DIR" .
+
+echo ""
+echo "------------------------------------------------------------"
+echo " 1. Running Taxi Zone Performance MapReduce Job"
+echo "------------------------------------------------------------"
+rm -rf "$OUTPUT_DIR/zone_performance"
+hadoop jar "$JAR" TaxiDriver "$INPUT" "$OUTPUT_DIR/zone_performance"
+echo "[SUCCESS] Zone Performance output saved to: $OUTPUT_DIR/zone_performance/part-r-00000"
+
+echo ""
+echo "------------------------------------------------------------"
+echo " 2. Running Hourly Peak Demand MapReduce Job"
+echo "------------------------------------------------------------"
+rm -rf "$OUTPUT_DIR/hourly_performance"
+hadoop jar "$JAR" HourlyTaxiDriver "$INPUT" "$OUTPUT_DIR/hourly_performance"
+echo "[SUCCESS] Hourly Performance output saved to: $OUTPUT_DIR/hourly_performance/part-r-00000"
+
+echo ""
+echo "============================================================"
+echo "   Both MapReduce Jobs Completed Successfully!"
+echo "============================================================"
+echo "Outputs:"
+echo " - Zone Performance   : $OUTPUT_DIR/zone_performance/part-r-00000"
+echo " - Hourly Performance : $OUTPUT_DIR/hourly_performance/part-r-00000"
+echo ""

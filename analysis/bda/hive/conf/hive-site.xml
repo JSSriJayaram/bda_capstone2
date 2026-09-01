@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+
+  <!-- Force local filesystem (NO HDFS required) -->
+  <property>
+    <name>fs.defaultFS</name>
+    <value>file:///</value>
+  </property>
+
+  <!-- Force Hadoop Local MR mode (NO YARN required) -->
+  <property>
+    <name>mapreduce.framework.name</name>
+    <value>local</value>
+  </property>
+
+  <!-- Configure Memory for MapReduce Local Tasks -->
+  <property>
+    <name>mapred.child.java.opts</name>
+    <value>-Xmx1024m --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.math=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED</value>
+  </property>
+
+  <property>
+    <name>mapreduce.map.java.opts</name>
+    <value>-Xmx1024m --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.math=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED</value>
+  </property>
+
+  <property>
+    <name>mapreduce.reduce.java.opts</name>
+    <value>-Xmx1024m --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.math=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED</value>
+  </property>
+
+  <property>
+    <name>mapreduce.map.memory.mb</name>
+    <value>1024</value>
+  </property>
+
+  <property>
+    <name>mapreduce.reduce.memory.mb</name>
+    <value>1024</value>
+  </property>
+
+  <!-- Use embedded Derby metastore stored in /home -->
+  <property>
+    <name>javax.jdo.option.ConnectionURL</name>
+    <value>jdbc:derby:;databaseName=/home/real/bda/hive/metastore/metastore_db;create=true</value>
+  </property>
+
+  <property>
+    <name>javax.jdo.option.ConnectionDriverName</name>
+    <value>org.apache.derby.jdbc.EmbeddedDriver</value>
+  </property>
+
+  <!-- Warehouse dir in /home -->
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>file:///home/real/bda/hive/warehouse</value>
+  </property>
+
+  <!-- Scratch dirs in /home -->
+  <property>
+    <name>hive.exec.scratchdir</name>
+    <value>/home/real/bda/hive/scratch</value>
+  </property>
+
+  <property>
+    <name>hive.exec.local.scratchdir</name>
+    <value>/home/real/bda/hive/scratch</value>
+  </property>
+
+  <property>
+    <name>hive.downloaded.resources.dir</name>
+    <value>/home/real/bda/hive/scratch</value>
+  </property>
+
+  <!-- Disable schema verification for embedded Derby -->
+  <property>
+    <name>hive.metastore.schema.verification</name>
+    <value>false</value>
+  </property>
+
+  <property>
+    <name>hive.metastore.schema.verification.record.version</name>
+    <value>false</value>
+  </property>
+
+  <property>
+    <name>datanucleus.schema.autoCreateAll</name>
+    <value>true</value>
+  </property>
+
+  <!-- Execution engine -->
+  <property>
+    <name>hive.execution.engine</name>
+    <value>mr</value>
+  </property>
+
+  <!-- HiveServer2 bind address -->
+  <property>
+    <name>hive.server2.thrift.bind.host</name>
+    <value>127.0.0.1</value>
+  </property>
+
+  <property>
+    <name>hive.server2.thrift.port</name>
+    <value>10000</value>
+  </property>
+
+</configuration>
