@@ -18,7 +18,7 @@ export HADOOP_HOME=/opt/hadoop
 export HADOOP_CONF_DIR=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/local-conf
 export PATH=$PATH:$HADOOP_HOME/bin
 
-INPUT=../../data/csv/yellow_tripdata_cleaned.csv
+INPUT=../../data/processed/yellow_tripdata_cleaned.csv
 [ ! -f "$INPUT" ] && INPUT=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/taxi_30mb.csv
 
 OUTPUT_DIR=/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output

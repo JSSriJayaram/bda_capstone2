@@ -10,7 +10,7 @@ os.makedirs(temp_dir, exist_ok=True)
 output_dir = "/Users/s4n/Documents/clg/sem7/bda_capstone2/scripts/local_mode/output/hive_results"
 os.makedirs(output_dir, exist_ok=True)
 
-csv_path = "../../data/csv/yellow_tripdata_cleaned.csv"
+csv_path = "../../data/processed/yellow_tripdata_cleaned.csv"
 print(f"[INFO] Loading dataset ({csv_path}) into lightweight SQLite database...")
 
 df = pd.read_csv(csv_path)

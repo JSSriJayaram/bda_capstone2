@@ -49,5 +49,5 @@ STORED AS TEXTFILE
 TBLPROPERTIES ("skip.header.line.count"="1");
 
 -- Load data from local CSV
-LOAD DATA LOCAL INPATH '/Users/s4n/Documents/clg/sem7/bda_capstone2/data/csv/yellow_tripdata_cleaned.csv'
+LOAD DATA LOCAL INPATH '/Users/s4n/Documents/clg/sem7/bda_capstone2/data/processed/yellow_tripdata_cleaned.csv'
 OVERWRITE INTO TABLE taxi_trips;
