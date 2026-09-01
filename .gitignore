@@ -4,11 +4,13 @@ venv/
 data/csv/*
 !data/csv/.gitkeep
 
+data/processed/*
+!data/processed/.gitkeep
+
 .DS_Store
 .ipynb_checkpoints
 
 mapreduce/target/
 results/
-data/processed/yellow_tripdata_cleaned.csv
 *.class
 *.jar

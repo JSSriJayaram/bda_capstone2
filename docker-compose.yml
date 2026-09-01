@@ -7,7 +7,7 @@ services:
         command: ["hdfs", "namenode"]
         ports:
             - "9871:9870"
-            - "8021:8020"
+            - "8022:8020"
         env_file: ./hadoop.env
         environment:
             - ENSURE_NAMENODE_DIR=/data/name/current

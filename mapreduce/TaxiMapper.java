@@ -65,7 +65,7 @@ public class TaxiMapper extends Mapper<LongWritable, Text, Text, Text> {
         String line = value.toString().trim();
         if (line.isEmpty()) return;
 
-        // Split by comma — dataset has no quoted commas (verified from inspection)
+        // Split by comma - dataset has no quoted commas (verified from inspection)
         String[] fields = line.split(",", -1);
 
         // Skip header row
