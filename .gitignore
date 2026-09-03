@@ -19,6 +19,7 @@ data/processed/*
 *.class
 *.jar
 mapreduce/target/
+mapreduce/lib/
 
 # ── Pipeline results (regenerated each run) ──────────────────
 results/

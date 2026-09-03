@@ -145,133 +145,72 @@ Expected: ~1.1 GB file in HDFS.
 
 ---
 
-## Step 4 — Compile & Run MapReduce
+## Step 4 — Compile MapReduce Jobs
 
-### 4.1 Compile (inside namenode)
+Note: The Hadoop Docker image (`apache/hadoop:3.3.6`) provides Java Runtime (JRE) for executing jobs, but does not include `javac`. MapReduce source code is compiled locally using your host machine's Java compiler and bundled into a single deployment JAR (`taxi-analytics-all.jar`).
 
-```bash
-docker exec taxi-namenode bash -c "
-  cd /opt && mkdir -p taxi_mr/src && \
-  hadoop classpath > /dev/null
-"
-
-# Copy source files
-docker cp mapreduce/TaxiMapper.java taxi-namenode:/opt/taxi_mr/src/
-docker cp mapreduce/TaxiReducer.java taxi-namenode:/opt/taxi_mr/src/
-docker cp mapreduce/TaxiDriver.java  taxi-namenode:/opt/taxi_mr/src/
-
-# Compile and package
-docker exec taxi-namenode bash -c "
-  cd /opt/taxi_mr && \
-  mkdir -p classes && \
-  javac -cp \$(hadoop classpath) -d classes src/*.java && \
-  jar -cvfm taxi-analysis.jar /dev/stdin -C classes . << 'EOF'
-Manifest-Version: 1.0
-Main-Class: TaxiDriver
-EOF
-"
-```
-
-### 4.2 Run MapReduce Job
+### 4.1 Download Hadoop dependencies (one-time setup)
 
 ```bash
-# Remove previous output if it exists
-docker exec taxi-namenode hdfs dfs -rm -r -f /user/bda/taxi/mapreduce/zone_performance
-
-# Run
-docker exec taxi-namenode bash -c "
-  hadoop jar /opt/taxi_mr/taxi-analysis.jar \
-    /user/bda/taxi/clean/ \
-    /user/bda/taxi/mapreduce/zone_performance
-"
+mkdir -p mapreduce/lib
+docker cp taxi-namenode:/opt/hadoop/share/hadoop/common/ mapreduce/lib/common/
+docker cp taxi-namenode:/opt/hadoop/share/hadoop/mapreduce/ mapreduce/lib/mapreduce/
 ```
 
-> Takes ~3–5 minutes for 7.6M records.
-
-### 4.3 View MapReduce Output
+### 4.2 Compile & package all MapReduce jobs
 
 ```bash
-docker exec taxi-namenode hdfs dfs -ls /user/bda/taxi/mapreduce/zone_performance/
-docker exec taxi-namenode hdfs dfs -cat /user/bda/taxi/mapreduce/zone_performance/part-r-00000 | head -20
-```
+# 1. Compile Java files
+mkdir -p mapreduce/target/classes
+javac --release 8 -cp "mapreduce/lib/common/*:mapreduce/lib/common/lib/*:mapreduce/lib/mapreduce/*:mapreduce/lib/mapreduce/lib/*" -d mapreduce/target/classes mapreduce/*.java
 
-**Output format (tab-separated):**
+# 2. Package into unified JAR
+jar -cvf mapreduce/target/taxi-analytics-all.jar -C mapreduce/target/classes .
 
-```
-PULocationID  total_trips  total_revenue  avg_fare  avg_distance  avg_duration  avg_speed  avg_tip
-237           408094       8497034.16     19.34     2.71          13.89         12.28      2.72
-132           398951       31899115.08    75.26     18.78         57.49         20.15      10.59
-...
-```
-
-### 4.4 Save Results Locally
-
-```bash
-mkdir -p results/mapreduce
-docker exec taxi-namenode bash -c "
-  echo 'PULocationID\ttotal_trips\ttotal_revenue\tavg_fare\tavg_distance\tavg_duration\tavg_speed\tavg_tip'
-  hdfs dfs -cat /user/bda/taxi/mapreduce/zone_performance/part-r-00000
-" > results/mapreduce/zone_performance.tsv
+# 3. Copy deployment JAR into NameNode container
+docker exec taxi-namenode mkdir -p /opt/taxi_mr/
+docker cp mapreduce/target/taxi-analytics-all.jar taxi-namenode:/opt/taxi_mr/taxi-analytics-all.jar
 ```
 
 ---
 
-## Step 5 — Compile & Run Hourly MapReduce Job
+## Step 5 — Run MapReduce Jobs
 
-This second MapReduce job aggregates **24-hour demand, revenue, and tip metrics** across all 7.6M trips.
+### 5.1 Job 1: Zone Performance Analysis
 
-### 5.1 Copy source files (already done if you ran Step 4)
-
-```bash
-docker cp mapreduce/HourlyTaxiMapper.java taxi-namenode:/opt/taxi_mr/src/
-docker cp mapreduce/HourlyTaxiReducer.java taxi-namenode:/opt/taxi_mr/src/
-docker cp mapreduce/HourlyTaxiDriver.java  taxi-namenode:/opt/taxi_mr/src/
-```
-
-### 5.2 Recompile all classes into a combined JAR
+Aggregates trip volume, revenue, average fare, distance, duration, speed, and tips across **261 pickup zones**.
 
 ```bash
+# Remove previous output if exists
+docker exec taxi-namenode hdfs dfs -rm -r -f /user/bda/taxi/mapreduce/zone_performance
+
+# Execute Job 1
+docker exec taxi-namenode hadoop jar /opt/taxi_mr/taxi-analytics-all.jar TaxiDriver \
+  /user/bda/taxi/clean/yellow_tripdata_cleaned.csv \
+  /user/bda/taxi/mapreduce/zone_performance
+
+# Save TSV locally
+mkdir -p results/mapreduce
 docker exec taxi-namenode bash -c "
-  cd /opt/taxi_mr && rm -rf classes && mkdir -p classes && \
-  javac -encoding UTF-8 -cp \$(hadoop classpath) -d classes src/*.java && \
-  jar -cvf taxi-hourly.jar -C classes/ HourlyTaxiDriver.class \
-      -C classes/ HourlyTaxiMapper.class -C classes/ HourlyTaxiReducer.class
-"
+  echo -e 'PULocationID\ttotal_trips\ttotal_revenue\tavg_fare\tavg_distance\tavg_duration\tavg_speed\tavg_tip'
+  hdfs dfs -cat /user/bda/taxi/mapreduce/zone_performance/part-r-00000
+" > results/mapreduce/zone_performance.tsv
 ```
 
-### 5.3 Run Hourly Job
+### 5.2 Job 2: Hourly Demand & Revenue Analysis
+
+Aggregates trip metrics across **24 hourly buckets** (00–23) for temporal peak demand analysis.
 
 ```bash
-# Remove previous output if it exists
+# Remove previous output if exists
 docker exec taxi-namenode hdfs dfs -rm -r -f /user/bda/taxi/mapreduce/hourly_performance
 
-# Run
-docker exec taxi-namenode bash -c "
-  hadoop jar /opt/taxi_mr/taxi-hourly.jar HourlyTaxiDriver \
-    /user/bda/taxi/clean/yellow_tripdata_cleaned.csv \
-    /user/bda/taxi/mapreduce/hourly_performance
-"
-```
+# Execute Job 2
+docker exec taxi-namenode hadoop jar /opt/taxi_mr/taxi-analytics-all.jar HourlyTaxiDriver \
+  /user/bda/taxi/clean/yellow_tripdata_cleaned.csv \
+  /user/bda/taxi/mapreduce/hourly_performance
 
-> Takes ~2–3 minutes. Outputs 24 rows (one per hour).
-
-### 5.4 View Output
-
-```bash
-docker exec taxi-namenode hdfs dfs -cat /user/bda/taxi/mapreduce/hourly_performance/part-r-00000
-```
-
-**Output format (tab-separated):**
-
-```
-hour  total_trips  total_revenue  avg_revenue  avg_passengers  avg_duration  avg_tip  tip_pct
-18    552506       15702002.89    28.42        1.25            15.89         3.70     20.84%
-...
-```
-
-### 5.5 Save Results Locally
-
-```bash
+# Save TSV locally
 mkdir -p results/mapreduce
 docker exec taxi-namenode bash -c "
   echo -e 'hour\ttotal_trips\ttotal_revenue\tavg_revenue\tavg_passengers\tavg_duration\tavg_tip\ttip_pct'
@@ -279,66 +218,20 @@ docker exec taxi-namenode bash -c "
 " > results/mapreduce/hourly_performance.tsv
 ```
 
----
+### 5.3 Job 3: Payment Type & Tipping Behavior Binning
 
-## Step 6 — Compile & Run Tip Behavior MapReduce Job (Job 3)
-
-This third MapReduce job performs **Value-Range Binning** on `fare_amount` combined with `payment_type` to analyze consumer tipping behavior, average tip %, zero-tip frequency, and passenger counts across discrete price brackets.
-
-### 6.1 Copy source files
+Applies **Value-Range Binning** on `fare_amount` combined with `payment_type` to analyze tipping behavior across 6 price brackets.
 
 ```bash
-docker cp mapreduce/TipBehaviorMapper.java taxi-namenode:/opt/taxi_mr/src/
-docker cp mapreduce/TipBehaviorReducer.java taxi-namenode:/opt/taxi_mr/src/
-docker cp mapreduce/TipBehaviorDriver.java  taxi-namenode:/opt/taxi_mr/src/
-```
-
-### 6.2 Recompile all classes into a combined JAR
-
-```bash
-docker exec taxi-namenode bash -c "
-  cd /opt/taxi_mr && rm -rf classes && mkdir -p classes && \
-  javac -encoding UTF-8 -cp \$(hadoop classpath) -d classes src/*.java && \
-  jar -cvf taxi-tip-behavior.jar -C classes/ TipBehaviorDriver.class \
-      -C classes/ TipBehaviorMapper.class -C classes/ TipBehaviorReducer.class
-"
-```
-
-### 6.3 Run Tip Behavior Job
-
-```bash
-# Remove previous output if it exists
+# Remove previous output if exists
 docker exec taxi-namenode hdfs dfs -rm -r -f /user/bda/taxi/mapreduce/tip_behavior
 
-# Run
-docker exec taxi-namenode bash -c "
-  hadoop jar /opt/taxi_mr/taxi-tip-behavior.jar TipBehaviorDriver \
-    /user/bda/taxi/clean/yellow_tripdata_cleaned.csv \
-    /user/bda/taxi/mapreduce/tip_behavior
-"
-```
+# Execute Job 3
+docker exec taxi-namenode hadoop jar /opt/taxi_mr/taxi-analytics-all.jar TipBehaviorDriver \
+  /user/bda/taxi/clean/yellow_tripdata_cleaned.csv \
+  /user/bda/taxi/mapreduce/tip_behavior
 
-> Takes ~2–3 minutes. Outputs binned stats by payment method and fare bracket.
-
-### 6.4 View Output
-
-```bash
-docker exec taxi-namenode hdfs dfs -cat /user/bda/taxi/mapreduce/tip_behavior/part-r-00000
-```
-
-**Output format (tab-separated):**
-
-```
-payment_fare_bucket  total_trips  avg_tip_amount  avg_tip_pct  zero_tip_rate  avg_passengers
-1_FARE_10_25         3124567      2.87            18.50%       12.10%         1.41
-1_FARE_25_50         892341       4.92            14.20%       21.30%         1.52
-2_FARE_10_25         412389       0.00            0.00%        100.00%        1.29
-...
-```
-
-### 6.5 Save Results Locally
-
-```bash
+# Save TSV locally
 mkdir -p results/mapreduce
 docker exec taxi-namenode bash -c "
   echo -e 'payment_fare_bucket\ttotal_trips\tavg_tip_amount\tavg_tip_pct\tzero_tip_rate\tavg_passengers'
