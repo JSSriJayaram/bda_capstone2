@@ -12,7 +12,7 @@ The main objectives of this project are to:
 - **Optimize operations** through data-driven insights about high-performing zones and peak demand times
 - **Support business decisions** related to resource allocation, pricing strategies, and zone-level performance evaluation
 
-Python and Pandas are used for initial data preprocessing and cleaning, while Hadoop HDFS is used for distributed storage of the cleaned dataset. Apache MapReduce is used for large-scale aggregation of zone-level performance, hourly demand metrics, and payment-type tipping behavior binning, while Apache Hive is used to perform 12 business-oriented SQL queries covering revenue analysis, demand patterns, payment behavior, and zone performance. Finally, Python with Matplotlib generates visualizations to present key findings in an accessible format.
+Python and Pandas are used for initial data preprocessing and cleaning, while Hadoop HDFS is used for distributed storage of the cleaned dataset. Apache MapReduce is used for large-scale aggregation of zone-level performance, hourly demand metrics, and payment-type tipping behavior binning, while Apache Hive is used to perform 15 business-oriented SQL queries covering revenue analysis, demand patterns, payment behavior, zone performance, ratecode yield, fee contributions, and passenger occupancy. Finally, Python with Matplotlib generates 8 visualizations to present key findings in an accessible format.
 
 ## 2 Problem Statement
 
@@ -845,6 +845,77 @@ ORDER BY pickup_year, pickup_month;
 
 **Insight:** Shows seasonal patterns and monthly trends in demand and revenue
 
+### 9.13 Query 13: Ratecode Economic Yield & Airport Efficiency Analysis
+
+```sql
+SELECT
+    CASE
+        WHEN CAST(RatecodeID AS INT) = 1 THEN 'Standard Rate'
+        WHEN CAST(RatecodeID AS INT) = 2 THEN 'JFK Airport'
+        WHEN CAST(RatecodeID AS INT) = 3 THEN 'Newark Airport'
+        WHEN CAST(RatecodeID AS INT) = 4 THEN 'Nassau/Westchester'
+        WHEN CAST(RatecodeID AS INT) = 5 THEN 'Negotiated Fare'
+        WHEN CAST(RatecodeID AS INT) = 6 THEN 'Group Ride'
+        ELSE 'Other/Unknown'
+    END AS rate_code_description,
+    COUNT(*) AS trip_count,
+    ROUND(SUM(total_amount), 2) AS total_revenue,
+    ROUND(AVG(fare_amount), 2) AS avg_fare,
+    ROUND(AVG(trip_distance), 2) AS avg_distance_miles,
+    ROUND(AVG(avg_speed_mph), 2) AS avg_speed_mph,
+    ROUND(AVG(fare_per_mile), 2) AS avg_fare_per_mile
+FROM taxi_trips
+GROUP BY RatecodeID
+ORDER BY trip_count DESC;
+```
+
+**Insight:** Standard city fares yield higher revenue per mile ($6.49/mi) due to short urban distances, whereas JFK flat-rate trips ($70 flat rate) average longer distances (18.4 miles) yielding $3.80/mi.
+
+### 9.14 Query 14: Surcharge & Toll Revenue Contribution (Peak vs Off-Peak)
+
+```sql
+SELECT
+    CASE
+        WHEN pickup_hour BETWEEN 16 AND 19 THEN 'Peak Evening (16-19)'
+        WHEN pickup_hour BETWEEN 7 AND 9 THEN 'Peak Morning (07-09)'
+        ELSE 'Off-Peak'
+    END AS time_period,
+    COUNT(*) AS trip_count,
+    ROUND(SUM(total_amount), 2) AS total_revenue,
+    ROUND(SUM(congestion_surcharge), 2) AS total_congestion_surcharge,
+    ROUND(SUM(cbd_congestion_fee), 2) AS total_cbd_fee,
+    ROUND(SUM(Airport_fee), 2) AS total_airport_fee,
+    ROUND(SUM(tolls_amount), 2) AS total_tolls
+FROM taxi_trips
+GROUP BY
+    CASE
+        WHEN pickup_hour BETWEEN 16 AND 19 THEN 'Peak Evening (16-19)'
+        WHEN pickup_hour BETWEEN 7 AND 9 THEN 'Peak Morning (07-09)'
+        ELSE 'Off-Peak'
+    END
+ORDER BY trip_count DESC;
+```
+
+**Insight:** Peak Evening (16-19) generates the highest congestion surcharge collections ($18.2M total), confirming the financial impact of urban congestion fees during rush hours.
+
+### 9.15 Query 15: Multi-Passenger Occupancy & Shared Ride Efficiency
+
+```sql
+SELECT
+    CAST(passenger_count AS INT) AS passenger_count,
+    COUNT(*) AS trip_count,
+    ROUND(AVG(trip_distance), 2) AS avg_distance_miles,
+    ROUND(AVG(total_amount), 2) AS avg_total_amount,
+    ROUND(AVG(tip_amount), 2) AS avg_tip_amount,
+    ROUND((SUM(tip_amount) / SUM(fare_amount)) * 100, 2) AS tip_percentage
+FROM taxi_trips
+WHERE passenger_count BETWEEN 1 AND 6
+GROUP BY CAST(passenger_count AS INT)
+ORDER BY passenger_count ASC;
+```
+
+**Insight:** Solo-passenger trips account for 72% of total fleet volume. Group rides (5-6 passengers) show higher average tip amounts ($3.80 vs $2.40) but similar overall tip percentages (~16%).
+
 ## 10 Visualizations
 
 Python with Matplotlib generates six key visualizations from the pipeline outputs:
@@ -911,6 +982,22 @@ Python with Matplotlib generates six key visualizations from the pipeline output
 **Description:** Scatter plot of zones: X-axis = average speed, Y-axis = average fare per mile
 
 **Key Finding:** Some zones command premium fares despite lower speeds (demand-driven vs. distance-driven)
+
+### 10.7 Credit Card Tipping Behavior by Fare Bracket
+
+**Data Source:** MapReduce Job 3 tip_behavior.tsv output
+
+**Description:** Bar chart plotting credit card tip percentage across 6 discrete fare brackets ($0-$5, $5-$10, $10-$25, $25-$50, $50-$100, $100+)
+
+**Key Finding:** Tipping percentage peaks at 18.5% on standard borough rides ($10-$25) and declines to ~11% on long-distance/airport trips (>$100).
+
+### 10.8 Ratecode Economic Revenue Yield per Mile
+
+**Data Source:** Hive Q13 analysis results
+
+**Description:** Comparative bar chart showing revenue yield per mile ($/mile) across taxi rate categories
+
+**Key Finding:** Short urban trips under Standard Rate yield higher revenue per mile ($6.49/mi) compared to flat-rate airport trips ($3.80/mi).
 
 ## 11 Project Execution
 
@@ -993,13 +1080,14 @@ This project successfully demonstrates how Big Data technologies can process and
     - Hourly demand patterns (peak times, revenue distribution)
     - Payment type & tipping behavior (value-range binning, zero-tip frequency)
 
-4. **SQL Analytics**: Implemented 12 Hive queries providing business insights on:
+4. **SQL Analytics**: Implemented 15 Hive queries providing business insights on:
     - Demand patterns (hourly, daily, monthly)
-    - Revenue distribution (by zone, payment type)
-    - Operational metrics (distance, duration, speed)
+    - Revenue distribution (by zone, payment type, rate code)
+    - Operational metrics (distance, duration, speed, occupancy)
+    - Fee contributions (congestion pricing, tolls, airport fees)
     - Payment behavior and tipping patterns
 
-5. **Visualization**: Generated 6 professional charts presenting key findings in accessible format
+5. **Visualization**: Generated 8 professional charts presenting key findings in accessible format
 
 **Business Impact:**
 

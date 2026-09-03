@@ -135,7 +135,45 @@ run_query "Q12: Monthly Performance" \
    FROM taxi_trips GROUP BY pickup_year, pickup_month
    ORDER BY pickup_year, pickup_month;"
 
+run_query "Q13: Ratecode Economic Yield" \
+  "SELECT CASE WHEN CAST(RatecodeID AS INT)=1 THEN 'Standard Rate'
+               WHEN CAST(RatecodeID AS INT)=2 THEN 'JFK Airport'
+               WHEN CAST(RatecodeID AS INT)=3 THEN 'Newark Airport'
+               WHEN CAST(RatecodeID AS INT)=4 THEN 'Nassau/Westchester'
+               WHEN CAST(RatecodeID AS INT)=5 THEN 'Negotiated Fare'
+               WHEN CAST(RatecodeID AS INT)=6 THEN 'Group Ride'
+               ELSE 'Other/Unknown' END AS rate_code_description,
+          COUNT(*) AS trip_count,
+          ROUND(SUM(total_amount),2) AS total_revenue,
+          ROUND(AVG(fare_amount),2) AS avg_fare,
+          ROUND(AVG(trip_distance),2) AS avg_distance_miles,
+          ROUND(AVG(avg_speed_mph),2) AS avg_speed_mph,
+          ROUND(AVG(fare_per_mile),2) AS avg_fare_per_mile
+   FROM taxi_trips GROUP BY RatecodeID ORDER BY trip_count DESC;"
+
+run_query "Q14: Surcharge & Toll Breakdown (Peak vs Off-Peak)" \
+  "SELECT CASE WHEN pickup_hour BETWEEN 16 AND 19 THEN 'Peak Evening (16-19)'
+               WHEN pickup_hour BETWEEN 7 AND 9 THEN 'Peak Morning (07-09)'
+               ELSE 'Off-Peak' END AS time_period,
+          COUNT(*) AS trip_count,
+          ROUND(SUM(total_amount),2) AS total_revenue,
+          ROUND(SUM(congestion_surcharge),2) AS total_congestion_surcharge,
+          ROUND(SUM(cbd_congestion_fee),2) AS total_cbd_fee,
+          ROUND(SUM(Airport_fee),2) AS total_airport_fee,
+          ROUND(SUM(tolls_amount),2) AS total_tolls
+   FROM taxi_trips GROUP BY CASE WHEN pickup_hour BETWEEN 16 AND 19 THEN 'Peak Evening (16-19)' WHEN pickup_hour BETWEEN 7 AND 9 THEN 'Peak Morning (07-09)' ELSE 'Off-Peak' END ORDER BY trip_count DESC;"
+
+run_query "Q15: Passenger Count Occupancy Analysis" \
+  "SELECT CAST(passenger_count AS INT) AS passenger_count,
+          COUNT(*) AS trip_count,
+          ROUND(AVG(trip_distance),2) AS avg_distance_miles,
+          ROUND(AVG(total_amount),2) AS avg_total_amount,
+          ROUND(AVG(tip_amount),2) AS avg_tip_amount,
+          ROUND((SUM(tip_amount)/SUM(fare_amount))*100,2) AS tip_percentage
+   FROM taxi_trips WHERE passenger_count BETWEEN 1 AND 6 GROUP BY CAST(passenger_count AS INT) ORDER BY passenger_count ASC;"
+
 echo ""
-echo "===== ALL 12 HIVE QUERIES COMPLETE =====" | tee -a "$RESULTS_DIR/all_queries_output.txt"
+echo "===== ALL 15 HIVE QUERIES COMPLETE =====" | tee -a "$RESULTS_DIR/all_queries_output.txt"
 echo "Finished: $(date)" | tee -a "$RESULTS_DIR/all_queries_output.txt"
 echo "Results saved to: $RESULTS_DIR/all_queries_output.txt"
+
