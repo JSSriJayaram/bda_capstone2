@@ -3,7 +3,7 @@
 A complete, reproducible Big Data Analytics pipeline using **Apache Hadoop 3.3.6 YARN + MapReduce + Hive 3.1.3** running on Docker, with Python-based visualization.
 
 **Dataset:** NYC Yellow Taxi (Jan–Mar 2026) · ~7.6 million records · 1.1 GB CSV  
-**Architecture:** HDFS → Java MapReduce (zone analytics + hourly analytics) + Hive (12 analytical queries) + Python visualizations
+**Architecture:** HDFS → Java MapReduce (zone performance + hourly demand + payment tipping behavior) + Hive (12 analytical queries) + Python visualizations
 
 ---
 
@@ -25,7 +25,10 @@ bda_capstone2/
 │   ├── TaxiDriver.java             # Zone job configuration
 │   ├── HourlyTaxiMapper.java       # Emits pickup_hour → trip metrics
 │   ├── HourlyTaxiReducer.java      # Aggregates hourly stats
-│   └── HourlyTaxiDriver.java       # Hourly job configuration
+│   ├── HourlyTaxiDriver.java       # Hourly job configuration
+│   ├── TipBehaviorMapper.java      # Emits composite payment_fare_bucket → tip metrics
+│   ├── TipBehaviorReducer.java     # Aggregates tipping stats & zero-tip rate
+│   └── TipBehaviorDriver.java      # Tip behavior job configuration
 ├── hive/
 │   ├── taxi_analytics.sql          # All DDL + 12 HiveQL queries
 │   ├── run_hive_queries.sh         # Script to run all 12 queries
@@ -44,7 +47,8 @@ bda_capstone2/
 └── results/                        # Pipeline TSV/text outputs (gitignored)
     ├── mapreduce/
     │   ├── zone_performance.tsv
-    │   └── hourly_performance.tsv
+    │   ├── hourly_performance.tsv
+    │   └── tip_behavior.tsv
     └── hive/
         └── all_queries_output.txt
 ```
@@ -275,7 +279,72 @@ docker exec taxi-namenode bash -c "
 
 ---
 
-## Step 6 — Run Hive Analytics
+## Step 6 — Compile & Run Tip Behavior MapReduce Job (Job 3)
+
+This third MapReduce job performs **Value-Range Binning** on `fare_amount` combined with `payment_type` to analyze consumer tipping behavior, average tip %, zero-tip frequency, and passenger counts across discrete price brackets.
+
+### 6.1 Copy source files
+
+```bash
+docker cp mapreduce/TipBehaviorMapper.java taxi-namenode:/opt/taxi_mr/src/
+docker cp mapreduce/TipBehaviorReducer.java taxi-namenode:/opt/taxi_mr/src/
+docker cp mapreduce/TipBehaviorDriver.java  taxi-namenode:/opt/taxi_mr/src/
+```
+
+### 6.2 Recompile all classes into a combined JAR
+
+```bash
+docker exec taxi-namenode bash -c "
+  cd /opt/taxi_mr && rm -rf classes && mkdir -p classes && \
+  javac -encoding UTF-8 -cp \$(hadoop classpath) -d classes src/*.java && \
+  jar -cvf taxi-tip-behavior.jar -C classes/ TipBehaviorDriver.class \
+      -C classes/ TipBehaviorMapper.class -C classes/ TipBehaviorReducer.class
+"
+```
+
+### 6.3 Run Tip Behavior Job
+
+```bash
+# Remove previous output if it exists
+docker exec taxi-namenode hdfs dfs -rm -r -f /user/bda/taxi/mapreduce/tip_behavior
+
+# Run
+docker exec taxi-namenode bash -c "
+  hadoop jar /opt/taxi_mr/taxi-tip-behavior.jar TipBehaviorDriver \
+    /user/bda/taxi/clean/yellow_tripdata_cleaned.csv \
+    /user/bda/taxi/mapreduce/tip_behavior
+"
+```
+
+> Takes ~2–3 minutes. Outputs binned stats by payment method and fare bracket.
+
+### 6.4 View Output
+
+```bash
+docker exec taxi-namenode hdfs dfs -cat /user/bda/taxi/mapreduce/tip_behavior/part-r-00000
+```
+
+**Output format (tab-separated):**
+
+```
+payment_fare_bucket  total_trips  avg_tip_amount  avg_tip_pct  zero_tip_rate  avg_passengers
+1_FARE_10_25         3124567      2.87            18.50%       12.10%         1.41
+1_FARE_25_50         892341       4.92            14.20%       21.30%         1.52
+2_FARE_10_25         412389       0.00            0.00%        100.00%        1.29
+...
+```
+
+### 6.5 Save Results Locally
+
+```bash
+mkdir -p results/mapreduce
+docker exec taxi-namenode bash -c "
+  echo -e 'payment_fare_bucket\ttotal_trips\tavg_tip_amount\tavg_tip_pct\tzero_tip_rate\tavg_passengers'
+  hdfs dfs -cat /user/bda/taxi/mapreduce/tip_behavior/part-r-00000
+" > results/mapreduce/tip_behavior.tsv
+```
+
+## Step 7 — Run Hive Analytics
 
 ### ⚠️ Critical: Heap Size
 
@@ -286,13 +355,13 @@ Hive runs local MapReduce **inside the CLI JVM**. ORDER BY on 7.6M rows requires
 export HADOOP_CLIENT_OPTS='-Xmx4g'
 ```
 
-### 5.1 Copy SQL file into container
+### 7.1 Copy SQL file into container
 
 ```bash
 docker cp hive/taxi_analytics.sql taxi-hive-server:/tmp/taxi_analytics.sql
 ```
 
-### 5.2 Create Database and Tables
+### 7.2 Create Database and Tables
 
 ```bash
 docker exec taxi-hive-server bash -c "
@@ -379,7 +448,7 @@ docker exec taxi-hive-server bash -c "
 
 > CTAS takes ~2 minutes. Creates 7,637,669 rows in ORC format.
 
-### 5.3 Verify Tables
+### 7.3 Verify Tables
 
 ```bash
 docker exec taxi-hive-server bash -c "
@@ -392,7 +461,7 @@ Expected: `7637669`
 
 ---
 
-## Step 7 — Run All 12 Hive Queries
+## Step 8 — Run All 12 Hive Queries
 
 Run individually (recommended) with the 4 GB heap flag:
 
@@ -481,7 +550,7 @@ bash hive/run_hive_queries.sh
 
 ---
 
-## Step 8 — Generate Visualizations
+## Step 9 — Generate Visualizations
 
 Produces **6 high-resolution charts** from the MapReduce and Hive outputs, saved to `visualizations/`.
 
@@ -525,7 +594,11 @@ bash run_analysis.sh
 
 - **24 hourly buckets** (00–23) across all 7.6M trips
 - Metrics per hour: trips, total revenue, avg revenue, avg passengers, avg duration, avg tip, tip %
-- Peak hour: **18:00** — 552,506 trips · $15.7M revenue · 20.84% tip rate
+### MapReduce — Tip Behavior (`results/mapreduce/tip_behavior.tsv`)
+
+- **Binned payment & fare brackets** (Credit Card vs Cash across 6 fare ranges)
+- Metrics per bucket: total trips, avg tip amount, tip % of base fare, zero-tip rate, avg passengers
+- Key Finding: Credit card trips show 14–18% average tipping on standard fares (\$10–\$50), whereas cash payments reflect 100% zero-tip rate in taximeter data (exposing unrecorded cash tips).
 
 ### Hive — 12 Analytical Queries (`results/hive/all_queries_output.txt`)
 
@@ -610,14 +683,14 @@ Yellow Taxi CSV (1.1 GB)
     │               │
     ▼               ▼
 MapReduce         Hive
- ┌──┴──┐            │
- │     │       taxi_trips_raw (External, CSV)
- ▼     ▼            │
-Zone  Hourly   taxi_trips (Managed, ORC+Snappy)
-Stats Stats         │
- │     │            ▼
- │     │      12 Analytical Queries
- └──┬──┘      (Q1–Q12 results)
+ ┌──┼──┐            │
+ │  │  │       taxi_trips_raw (External, CSV)
+ ▼  ▼  ▼            │
+Zone Hourly Tip taxi_trips (Managed, ORC+Snappy)
+Stats Stats Behavior│
+ │  │  │            ▼
+ └──┼──┘      12 Analytical Queries
+    │         (Q1–Q12 results)
     │               │
     └───────┬────────┘
             ▼

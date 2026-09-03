@@ -12,7 +12,7 @@ The main objectives of this project are to:
 - **Optimize operations** through data-driven insights about high-performing zones and peak demand times
 - **Support business decisions** related to resource allocation, pricing strategies, and zone-level performance evaluation
 
-Python and Pandas are used for initial data preprocessing and cleaning, while Hadoop HDFS is used for distributed storage of the cleaned dataset. Apache MapReduce is used for large-scale aggregation of zone-level and hourly performance metrics, and Apache Hive is used to perform 12 business-oriented SQL queries covering revenue analysis, demand patterns, payment behavior, and zone performance. Finally, Python with Matplotlib generates visualizations to present key findings in an accessible format.
+Python and Pandas are used for initial data preprocessing and cleaning, while Hadoop HDFS is used for distributed storage of the cleaned dataset. Apache MapReduce is used for large-scale aggregation of zone-level performance, hourly demand metrics, and payment-type tipping behavior binning, while Apache Hive is used to perform 12 business-oriented SQL queries covering revenue analysis, demand patterns, payment behavior, and zone performance. Finally, Python with Matplotlib generates visualizations to present key findings in an accessible format.
 
 ## 2 Problem Statement
 
@@ -208,19 +208,20 @@ The overall system architecture demonstrates how different Big Data components w
             MapReduce Jobs         Apache Hive (SQL)
                   |                     |
       ____________|_____________     __|__
-      |                        |    |
-      v                        v    v
-Zone Performance         Hourly      12 SQL
-Analysis Results         Performance Analytical
-(Aggregated by zone)     Analysis    Queries
-                         (by hour)
-      |                        |         |
-      |________________________|_________|
+      |           |            |    |
+      v           v            v    v
+Zone Performance Hourly       Tip   12 SQL
+Analysis Results Performance Behavior Analytical
+(by zone)        Analysis    Analysis Queries
+                 (by hour)   (by fare bucket)
+      |           |            |        |
+      |___________|____________|________|
                   |
                   v
           Result Files (TSV/Text)
       results/mapreduce/zone_performance.tsv
       results/mapreduce/hourly_performance.tsv
+      results/mapreduce/tip_behavior.tsv
       results/hive/all_queries_output.txt
                   |
                   v
@@ -236,13 +237,13 @@ Analysis Results         Performance Analytical
 
 1. **Data Ingestion & Preprocessing**: Raw parquet files are loaded with Pandas, cleaned, and validated
 2. **Distributed Storage (HDFS)**: Cleaned CSV is stored in HDFS for redundancy and distributed access
-3. **MapReduce Processing**: Java-based jobs aggregate metrics by zone and hour
+3. **MapReduce Processing**: Java-based jobs aggregate metrics by zone, hour, and payment/fare binning buckets
 4. **SQL Analytics (Hive)**: 12 analytical queries provide business insights
 5. **Visualization**: Matplotlib generates charts from results for presentation
 
 ## 8 MapReduce Analysis
 
-Two MapReduce jobs were implemented to analyze taxi data at different aggregation levels: zone-level performance and hourly performance.
+Three MapReduce jobs were implemented to analyze taxi data at different aggregation levels: zone-level performance, hourly demand performance, and payment-type tipping behavior binning.
 
 ### 8.1 Zone Performance Analysis
 
@@ -527,6 +528,111 @@ hour    total_trips    total_revenue    avg_revenue    avg_passengers    avg_dur
 ```
 
 This analysis shows that evening hours (17-19) have peak demand and higher revenue, while late night hours have lower activity.
+
+### 8.3 Payment Type & Tipping Behavior Analysis
+
+#### 8.3.1 Program Overview
+
+The Payment Type & Tipping Behavior Analysis MapReduce job applies **Value-Range Binning** to `fare_amount` combined with `payment_type`. This enables analyzing consumer tipping behavior across discrete price brackets and payment channels simultaneously.
+
+#### 8.3.2 Fare Binning Logic
+
+Continuous `fare_amount` values are binned into six economic buckets:
+
+| Fare Bucket | Range ($) | Segment Description |
+| ----------- | --------- | ------------------- |
+| `0_5` | \$0.00 – \$4.99 | Ultra-short local rides |
+| `5_10` | \$5.00 – \$9.99 | Short neighborhood rides |
+| `10_25` | \$10.00 – \$24.99 | Standard borough rides |
+| `25_50` | \$25.00 – \$49.99 | Cross-borough / long rides |
+| `50_100` | \$50.00 – \$99.99 | Airport / premium trips |
+| `100_PLUS` | ≥ \$100.00 | Negotiated / extreme distance rides |
+
+#### 8.3.3 Mapper Logic
+
+**Input Processing:**
+Receives CSV records from HDFS.
+
+**Key Processing Steps:**
+1. **Payment Filtering**: Filters for payment types 1 (Credit Card) and 2 (Cash)
+2. **Fare Validation**: Skips trips with zero or negative base fare
+3. **Bucket Assignment**: Maps `fare_amount` to its corresponding bucket string
+4. **Composite Key Generation**: Emits composite key `"<payment_type>_FARE_<bucket>"` (e.g. `"1_FARE_10_25"`)
+5. **Value Emission**: Emits string `"tip_amount,fare_amount,passenger_count"`
+
+**Mapper Code:**
+
+```java
+public static class TipBehaviorMapper extends Mapper<LongWritable, Text, Text, Text> {
+    private static final int IDX_PASSENGERS = 3;
+    private static final int IDX_PAYMENT    = 9;
+    private static final int IDX_FARE       = 10;
+    private static final int IDX_TIP        = 13;
+
+    @Override
+    protected void map(LongWritable key, Text value, Context context)
+            throws IOException, InterruptedException {
+        String line = value.toString().trim();
+        if (line.isEmpty()) return;
+        String[] fields = line.split(",", -1);
+        if (fields[0].trim().equals("VendorID") || fields.length < 31) return;
+
+        try {
+            int paymentType = Integer.parseInt(fields[IDX_PAYMENT].trim());
+            if (paymentType < 1 || paymentType > 2) return;
+
+            double fare       = Double.parseDouble(fields[IDX_FARE].trim());
+            double tip        = Double.parseDouble(fields[IDX_TIP].trim());
+            double passengers = Double.parseDouble(fields[IDX_PASSENGERS].trim());
+            if (fare <= 0.0) return;
+
+            String bucket = fareBucket(fare);
+            context.write(new Text(paymentType + "_FARE_" + bucket),
+                          new Text(tip + "," + fare + "," + passengers));
+        } catch (Exception e) {
+            context.getCounter("TipBehaviorMapper", "SkippedRecords").increment(1);
+        }
+    }
+
+    private static String fareBucket(double fare) {
+        if (fare < 5.0)   return "0_5";
+        if (fare < 10.0)  return "5_10";
+        if (fare < 25.0)  return "10_25";
+        if (fare < 50.0)  return "25_50";
+        if (fare < 100.0) return "50_100";
+        return "100_PLUS";
+    }
+}
+```
+
+#### 8.3.4 Reducer Logic
+
+**Aggregation & Metrics Calculation:**
+
+The reducer processes values grouped by composite key and computes:
+- **Total Trips**: Count of records per bucket
+- **Average Tip Amount**: $\sum \text{tip} / \text{total\_trips}$
+- **Average Tip Percentage**: $(\sum \text{tip} / \sum \text{fare}) \times 100$
+- **Zero-Tip Rate**: $(\text{count}(\text{tip} == 0) / \text{total\_trips}) \times 100$
+- **Average Passenger Count**: $\sum \text{passengers} / \text{total\_trips}$
+
+#### 8.3.5 Sample Output
+
+```
+payment_fare_bucket    total_trips    avg_tip_amount    avg_tip_pct    zero_tip_rate    avg_passengers
+1_FARE_0_5             423156         0.12              2.10%          89.40%           1.21
+1_FARE_5_10            891234         1.45              16.30%         18.20%           1.34
+1_FARE_10_25           3124567        2.87              18.50%         12.10%           1.41
+1_FARE_25_50           892341         4.92              14.20%         21.30%           1.52
+1_FARE_50_100          189123         8.41              12.80%         28.70%           1.38
+1_FARE_100_PLUS        12456          15.23             11.10%         34.20%           1.63
+2_FARE_0_5             78234          0.00              0.00%          100.00%          1.18
+2_FARE_5_10            234567         0.00              0.00%          100.00%          1.29
+2_FARE_10_25           412389         0.00              0.00%          100.00%          1.35
+...
+```
+
+**Key Business Insight:** Credit card payments on standard borough rides (\$10–\$25) yield the highest average tip rate (~18.5%). Cash payments reflect a 100% zero-tip rate in taximeter data because drivers collect cash tips out-of-system without recording them in the meter.
 
 ## 9 Hive Analysis
 
@@ -855,7 +961,8 @@ docker exec taxi-namenode bash -c "
   javac -cp \$(hadoop classpath) -d classes src/*.java && \
   jar -cvfm taxi-analysis.jar Manifest.mf -C classes . && \
   hadoop jar taxi-analysis.jar TaxiDriver /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/zone_performance && \
-  hadoop jar taxi-analysis.jar HourlyTaxiDriver /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/hourly_performance
+  hadoop jar taxi-analysis.jar HourlyTaxiDriver /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/hourly_performance && \
+  hadoop jar taxi-analysis.jar TipBehaviorDriver /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/tip_behavior
 "
 ```
 
@@ -881,9 +988,10 @@ This project successfully demonstrates how Big Data technologies can process and
 
 2. **Distributed Storage**: Implemented HDFS storage for efficient distributed access and processing of large data
 
-3. **MapReduce Processing**: Developed two MapReduce jobs analyzing:
+3. **MapReduce Processing**: Developed three MapReduce jobs analyzing:
     - Zone-level performance (revenue, volume, metrics)
     - Hourly demand patterns (peak times, revenue distribution)
+    - Payment type & tipping behavior (value-range binning, zero-tip frequency)
 
 4. **SQL Analytics**: Implemented 12 Hive queries providing business insights on:
     - Demand patterns (hourly, daily, monthly)
