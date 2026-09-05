@@ -210,7 +210,7 @@ The overall system architecture demonstrates how different Big Data components w
       ____________|_____________     __|__
       |           |            |    |
       v           v            v    v
-Zone Performance Hourly       Tip   12 SQL
+Zone Performance Hourly       Tip   15 SQL
 Analysis Results Performance Behavior Analytical
 (by zone)        Analysis    Analysis Queries
                  (by hour)   (by fare bucket)
@@ -229,7 +229,7 @@ Analysis Results Performance Behavior Analytical
          (Matplotlib Charts)
                   |
                   v
-         6 PNG Charts
+         8 PNG Charts
       (visualizations/ directory)
 ```
 
@@ -238,7 +238,7 @@ Analysis Results Performance Behavior Analytical
 1. **Data Ingestion & Preprocessing**: Raw parquet files are loaded with Pandas, cleaned, and validated
 2. **Distributed Storage (HDFS)**: Cleaned CSV is stored in HDFS for redundancy and distributed access
 3. **MapReduce Processing**: Java-based jobs aggregate metrics by zone, hour, and payment/fare binning buckets
-4. **SQL Analytics (Hive)**: 12 analytical queries provide business insights
+4. **SQL Analytics (Hive)**: 15 analytical queries provide business insights
 5. **Visualization**: Matplotlib generates charts from results for presentation
 
 ## 8 MapReduce Analysis
@@ -636,7 +636,7 @@ payment_fare_bucket    total_trips    avg_tip_amount    avg_tip_pct    zero_tip_
 
 ## 9 Hive Analysis
 
-Apache Hive was used to perform 12 SQL-based analytical queries on the taxi dataset. These queries provide business-oriented insights across multiple dimensions.
+Apache Hive was used to perform 15 SQL-based analytical queries on the taxi dataset. These queries provide business-oriented insights across multiple dimensions.
 
 ### 9.1 Query 1: Total Taxi Trips
 
@@ -1040,23 +1040,48 @@ docker exec taxi-namenode hdfs dfs -mkdir -p /user/bda/taxi/clean/
 docker exec taxi-namenode hdfs dfs -put /Users/s4n/Documents/clg/sem7/bda_capstone2/data/processed/yellow_tripdata_cleaned.csv /user/bda/taxi/clean/
 ```
 
-**3. Run MapReduce Jobs:**
+**3. Compile MapReduce Jobs locally (Host JDK):**
+
+> **Note:** The `apache/hadoop:3.3.6` container provides Java Runtime (JRE) for executing jobs, but does not contain `javac`. Source files are compiled on the host machine targeting Hadoop libraries and packaged into `taxi-analytics-all.jar`.
 
 ```bash
-docker exec taxi-namenode bash -c "
-  cd /opt/taxi_mr && \
-  javac -cp \$(hadoop classpath) -d classes src/*.java && \
-  jar -cvfm taxi-analysis.jar Manifest.mf -C classes . && \
-  hadoop jar taxi-analysis.jar TaxiDriver /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/zone_performance && \
-  hadoop jar taxi-analysis.jar HourlyTaxiDriver /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/hourly_performance && \
-  hadoop jar taxi-analysis.jar TipBehaviorDriver /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/tip_behavior
-"
+# Compile and package unified JAR on host
+mkdir -p mapreduce/target/classes mapreduce/lib
+docker cp taxi-namenode:/opt/hadoop/share/hadoop/common/ mapreduce/lib/common/
+docker cp taxi-namenode:/opt/hadoop/share/hadoop/mapreduce/ mapreduce/lib/mapreduce/
+
+javac --release 8 -cp "mapreduce/lib/common/*:mapreduce/lib/common/lib/*:mapreduce/lib/mapreduce/*:mapreduce/lib/mapreduce/lib/*" -d mapreduce/target/classes mapreduce/*.java
+jar -cvf mapreduce/target/taxi-analytics-all.jar -C mapreduce/target/classes .
+
+# Deploy JAR to NameNode container
+docker exec taxi-namenode mkdir -p /opt/taxi_mr/
+docker cp mapreduce/target/taxi-analytics-all.jar taxi-namenode:/opt/taxi_mr/taxi-analytics-all.jar
 ```
 
-**4. Run Hive Queries:**
+**4. Run MapReduce Jobs:**
 
 ```bash
-docker exec taxi-hive-server beeline -u "jdbc:hive2://127.0.0.1:10000/taxi_analytics" -f /opt/hive/taxi_analytics.sql > results/hive/all_queries_output.txt
+# Job 1: Zone Performance
+docker exec taxi-namenode hdfs dfs -rm -r -f /user/bda/taxi/mapreduce/zone_performance
+docker exec taxi-namenode hadoop jar /opt/taxi_mr/taxi-analytics-all.jar TaxiDriver /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/zone_performance
+docker exec taxi-namenode hdfs dfs -cat /user/bda/taxi/mapreduce/zone_performance/part-r-00000 > results/mapreduce/zone_performance.tsv
+
+# Job 2: Hourly Demand
+docker exec taxi-namenode hdfs dfs -rm -r -f /user/bda/taxi/mapreduce/hourly_performance
+docker exec taxi-namenode hadoop jar /opt/taxi_mr/taxi-analytics-all.jar HourlyTaxiDriver /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/hourly_performance
+docker exec taxi-namenode hdfs dfs -cat /user/bda/taxi/mapreduce/hourly_performance/part-r-00000 > results/mapreduce/hourly_performance.tsv
+
+# Job 3: Tip Behavior Binning
+docker exec taxi-namenode hdfs dfs -rm -r -f /user/bda/taxi/mapreduce/tip_behavior
+docker exec taxi-namenode hadoop jar /opt/taxi_mr/taxi-analytics-all.jar TipBehaviorDriver /user/bda/taxi/clean/yellow_tripdata_cleaned.csv /user/bda/taxi/mapreduce/tip_behavior
+docker exec taxi-namenode hdfs dfs -cat /user/bda/taxi/mapreduce/tip_behavior/part-r-00000 > results/mapreduce/tip_behavior.tsv
+```
+
+**5. Run Hive Database Setup & 15 Queries:**
+
+```bash
+# Execute SQL setup and queries inside container directly
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr -f /opt/hive/taxi_analytics.sql"
 ```
 
 **5. Generate Visualizations:**

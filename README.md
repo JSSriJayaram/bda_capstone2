@@ -250,213 +250,100 @@ Hive runs local MapReduce **inside the CLI JVM**. ORDER BY on 7.6M rows requires
 export HADOOP_CLIENT_OPTS='-Xmx4g'
 ```
 
-### 7.1 Copy SQL file into container
+### 7.1 Database & ORC Table Setup (Run Once)
+
+Execute the full script inside the container (which reads `/opt/hive/taxi_analytics.sql` directly without shell escaping issues):
 
 ```bash
-docker cp hive/taxi_analytics.sql taxi-hive-server:/tmp/taxi_analytics.sql
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr -f /opt/hive/taxi_analytics.sql"
 ```
-
-### 7.2 Create Database and Tables
-
-```bash
-docker exec taxi-hive-server bash -c "
-  export HADOOP_CLIENT_OPTS='-Xmx4g'
-  hive --hiveconf hive.execution.engine=mr \
-       -e \"CREATE DATABASE IF NOT EXISTS taxi_analytics;\"
-"
-```
-
-**Create external staging table (reads raw CSV from HDFS):**
-
-```bash
-docker exec taxi-hive-server bash -c "
-  export HADOOP_CLIENT_OPTS='-Xmx4g'
-  hive --hiveconf hive.execution.engine=mr -e \"
-    USE taxi_analytics;
-    CREATE EXTERNAL TABLE IF NOT EXISTS taxi_trips_raw (
-        VendorID STRING, tpep_pickup_datetime STRING, tpep_dropoff_datetime STRING,
-        passenger_count STRING, trip_distance STRING, RatecodeID STRING,
-        store_and_fwd_flag STRING, PULocationID STRING, DOLocationID STRING,
-        payment_type STRING, fare_amount STRING, extra STRING, mta_tax STRING,
-        tip_amount STRING, tolls_amount STRING, improvement_surcharge STRING,
-        total_amount STRING, congestion_surcharge STRING, Airport_fee STRING,
-        cbd_congestion_fee STRING, trip_duration_min STRING, pickup_date STRING,
-        pickup_hour STRING, pickup_day STRING, pickup_month STRING,
-        pickup_year STRING, pickup_dayofweek STRING, pickup_day_name STRING,
-        is_weekend STRING, avg_speed_mph STRING, fare_per_mile STRING
-    )
-    ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
-    WITH SERDEPROPERTIES ('separatorChar'=',', 'quoteChar'='\\\"', 'escapeChar'='\\\\')
-    STORED AS TEXTFILE
-    LOCATION '/user/bda/taxi/clean/'
-    TBLPROPERTIES ('skip.header.line.count'='1');
-  \"
-"
-```
-
-**Create managed ORC table (typed, columnar, Snappy-compressed):**
-
-```bash
-docker exec taxi-hive-server bash -c "
-  export HADOOP_CLIENT_OPTS='-Xmx4g'
-  hive --hiveconf hive.execution.engine=mr -e \"
-    USE taxi_analytics;
-    CREATE TABLE IF NOT EXISTS taxi_trips
-    STORED AS ORC
-    TBLPROPERTIES ('orc.compress'='SNAPPY')
-    AS SELECT
-        CAST(VendorID AS INT) AS VendorID,
-        tpep_pickup_datetime, tpep_dropoff_datetime,
-        CAST(passenger_count AS DOUBLE) AS passenger_count,
-        CAST(trip_distance AS DOUBLE) AS trip_distance,
-        CAST(RatecodeID AS DOUBLE) AS RatecodeID,
-        store_and_fwd_flag,
-        CAST(PULocationID AS INT) AS PULocationID,
-        CAST(DOLocationID AS INT) AS DOLocationID,
-        CAST(payment_type AS INT) AS payment_type,
-        CAST(fare_amount AS DOUBLE) AS fare_amount,
-        CAST(extra AS DOUBLE) AS extra,
-        CAST(mta_tax AS DOUBLE) AS mta_tax,
-        CAST(tip_amount AS DOUBLE) AS tip_amount,
-        CAST(tolls_amount AS DOUBLE) AS tolls_amount,
-        CAST(improvement_surcharge AS DOUBLE) AS improvement_surcharge,
-        CAST(total_amount AS DOUBLE) AS total_amount,
-        CAST(congestion_surcharge AS DOUBLE) AS congestion_surcharge,
-        CAST(Airport_fee AS DOUBLE) AS Airport_fee,
-        CAST(cbd_congestion_fee AS DOUBLE) AS cbd_congestion_fee,
-        CAST(trip_duration_min AS DOUBLE) AS trip_duration_min,
-        pickup_date,
-        CAST(pickup_hour AS INT) AS pickup_hour,
-        CAST(pickup_day AS INT) AS pickup_day,
-        CAST(pickup_month AS INT) AS pickup_month,
-        CAST(pickup_year AS INT) AS pickup_year,
-        CAST(pickup_dayofweek AS INT) AS pickup_dayofweek,
-        pickup_day_name,
-        CAST(is_weekend AS INT) AS is_weekend,
-        CAST(avg_speed_mph AS DOUBLE) AS avg_speed_mph,
-        CAST(fare_per_mile AS DOUBLE) AS fare_per_mile
-    FROM taxi_trips_raw
-    WHERE VendorID IS NOT NULL AND VendorID != 'VendorID';
-  \"
-"
-```
-
-> CTAS takes ~2 minutes. Creates 7,637,669 rows in ORC format.
-
-### 7.3 Verify Tables
-
-```bash
-docker exec taxi-hive-server bash -c "
-  export HADOOP_CLIENT_OPTS='-Xmx4g'
-  hive -e \"USE taxi_analytics; SHOW TABLES; SELECT COUNT(*) FROM taxi_trips;\"
-"
-```
-
-Expected: `7637669`
 
 ---
 
-## Step 8 — Run All 12 Hive Queries
+## Step 8 — Run Hive Analytics Queries
 
-Run individually (recommended) with the 4 GB heap flag:
+### 📊 Individual Queries (Run Any Query One-by-One)
 
+**Q1 — Total Taxi Trips**
 ```bash
-# Quick helper function
-hq() {
-  docker exec taxi-hive-server bash -c "
-    export HADOOP_CLIENT_OPTS='-Xmx4g'
-    hive --hiveconf hive.execution.engine=mr \
-         --hiveconf hive.cli.print.header=true \
-         -e \"USE taxi_analytics; $1\"
-  " 2>&1 | grep -v SLF4J | grep -v 'Class path' | grep -v 'Found binding'
-}
-
-# Q1
-hq "SELECT COUNT(*) AS total_trips FROM taxi_trips;"
-
-# Q2
-hq "SELECT ROUND(SUM(total_amount),2) AS total_revenue FROM taxi_trips;"
-
-# Q3
-hq "SELECT ROUND(AVG(fare_amount),2) AS avg_fare,
-           ROUND(AVG(trip_distance),2) AS avg_distance_miles,
-           ROUND(AVG(trip_duration_min),2) AS avg_duration_min,
-           ROUND(AVG(avg_speed_mph),2) AS avg_speed_mph
-    FROM taxi_trips;"
-
-# Q4 — Trip volume by zone
-hq "SELECT PULocationID, COUNT(*) AS trip_count
-    FROM taxi_trips GROUP BY PULocationID
-    ORDER BY trip_count DESC LIMIT 20;"
-
-# Q5 — Revenue by zone
-hq "SELECT PULocationID, COUNT(*) AS trip_count,
-           ROUND(SUM(total_amount),2) AS total_revenue
-    FROM taxi_trips GROUP BY PULocationID
-    ORDER BY total_revenue DESC LIMIT 20;"
-
-# Q6 — Top 10 most expensive trips
-hq "SELECT PULocationID, DOLocationID, tpep_pickup_datetime,
-           ROUND(fare_amount,2) AS fare, ROUND(total_amount,2) AS total
-    FROM taxi_trips ORDER BY total_amount DESC LIMIT 10;"
-
-# Q7 — Distance stats
-hq "SELECT MAX(trip_distance) AS max_dist, MIN(trip_distance) AS min_dist,
-           ROUND(AVG(trip_distance),2) AS avg_dist
-    FROM taxi_trips WHERE trip_distance > 0;"
-
-# Q8 — Demand by hour
-hq "SELECT pickup_hour, COUNT(*) AS trips,
-           ROUND(AVG(trip_duration_min),2) AS avg_duration
-    FROM taxi_trips GROUP BY pickup_hour ORDER BY pickup_hour;"
-
-# Q9 — Weekday vs Weekend
-hq "SELECT CASE WHEN is_weekend=1 THEN 'Weekend' ELSE 'Weekday' END AS day_type,
-           COUNT(*) AS trips, ROUND(AVG(total_amount),2) AS avg_fare
-    FROM taxi_trips GROUP BY is_weekend;"
-
-# Q10 — Payment type
-hq "SELECT CASE payment_type
-           WHEN 1 THEN 'Credit Card' WHEN 2 THEN 'Cash'
-           WHEN 3 THEN 'No Charge'  WHEN 4 THEN 'Dispute'
-           ELSE 'Unknown' END AS method,
-           COUNT(*) AS trips, ROUND(SUM(total_amount),2) AS revenue
-    FROM taxi_trips GROUP BY payment_type ORDER BY trips DESC;"
-
-# Q11 — High-volume zones (HAVING)
-hq "SELECT PULocationID, COUNT(*) AS trips,
-           ROUND(AVG(total_amount),2) AS avg_fare
-    FROM taxi_trips GROUP BY PULocationID
-    HAVING COUNT(*) > 10000 ORDER BY trips DESC;"
-
-# Q12 — Monthly breakdown
-hq "SELECT pickup_year, pickup_month, COUNT(*) AS trips,
-           ROUND(SUM(total_amount),2) AS revenue
-    FROM taxi_trips GROUP BY pickup_year, pickup_month
-    ORDER BY pickup_year, pickup_month;"
-
-# Q13 — Ratecode Yield
-hq "SELECT RatecodeID, COUNT(*) AS trips, ROUND(SUM(total_amount),2) AS revenue,
-           ROUND(AVG(fare_per_mile),2) AS avg_fare_per_mile
-    FROM taxi_trips GROUP BY RatecodeID ORDER BY trips DESC;"
-
-# Q14 — Surcharge & Toll Breakdown
-hq "SELECT CASE WHEN pickup_hour BETWEEN 16 AND 19 THEN 'Peak Evening'
-               WHEN pickup_hour BETWEEN 7 AND 9 THEN 'Peak Morning'
-               ELSE 'Off-Peak' END AS period,
-           COUNT(*) AS trips, ROUND(SUM(congestion_surcharge),2) AS congestion_fees
-    FROM taxi_trips GROUP BY CASE WHEN pickup_hour BETWEEN 16 AND 19 THEN 'Peak Evening' WHEN pickup_hour BETWEEN 7 AND 9 THEN 'Peak Morning' ELSE 'Off-Peak' END;"
-
-# Q15 — Passenger Occupancy
-hq "SELECT passenger_count, COUNT(*) AS trips, ROUND(AVG(total_amount),2) AS avg_amount,
-           ROUND(AVG(tip_amount),2) AS avg_tip
-    FROM taxi_trips GROUP BY passenger_count ORDER BY passenger_count;"
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT COUNT(*) AS total_trips FROM taxi_trips;'"
 ```
 
-Or run the provided script:
+**Q2 — Total Revenue**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT ROUND(SUM(total_amount),2) AS total_revenue FROM taxi_trips;'"
+```
+
+**Q3 — Platform-wide Averages**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT ROUND(AVG(fare_amount),2) AS avg_fare, ROUND(AVG(trip_distance),2) AS avg_distance_miles, ROUND(AVG(trip_duration_min),2) AS avg_duration_min, ROUND(AVG(avg_speed_mph),2) AS avg_speed_mph FROM taxi_trips;'"
+```
+
+**Q4 — Trip Volume by Pickup Zone (Top 20)**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT PULocationID, COUNT(*) AS trip_count FROM taxi_trips GROUP BY PULocationID ORDER BY trip_count DESC LIMIT 20;'"
+```
+
+**Q5 — Revenue by Pickup Zone (Top 20)**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT PULocationID, COUNT(*) AS trip_count, ROUND(SUM(total_amount),2) AS total_revenue, ROUND(AVG(total_amount),2) AS avg_revenue_per_trip FROM taxi_trips GROUP BY PULocationID ORDER BY total_revenue DESC LIMIT 20;'"
+```
+
+**Q6 — Top 10 Highest-Value Trips**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT PULocationID, DOLocationID, tpep_pickup_datetime, ROUND(trip_distance,2) AS trip_distance_miles, ROUND(trip_duration_min,2) AS trip_duration_min, ROUND(fare_amount,2) AS fare_amount, ROUND(tip_amount,2) AS tip_amount, ROUND(total_amount,2) AS total_amount FROM taxi_trips ORDER BY total_amount DESC LIMIT 10;'"
+```
+
+**Q7 — Trip Distance Statistics**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT MAX(trip_distance) AS max_distance_miles, MIN(trip_distance) AS min_distance_miles, ROUND(AVG(trip_distance),2) AS avg_distance_miles, COUNT(*) AS total_trips FROM taxi_trips WHERE trip_distance > 0;'"
+```
+
+**Q8 — Trip Demand by Pickup Hour**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT pickup_hour, COUNT(*) AS trip_count, ROUND(AVG(trip_duration_min),2) AS avg_duration_min, ROUND(AVG(total_amount),2) AS avg_total_amount FROM taxi_trips GROUP BY pickup_hour ORDER BY pickup_hour;'"
+```
+
+**Q9 — Weekday vs Weekend Analysis**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT CASE WHEN is_weekend=1 THEN \"Weekend\" ELSE \"Weekday\" END AS day_type, COUNT(*) AS trip_count, ROUND(AVG(total_amount),2) AS avg_total_amount, ROUND(AVG(trip_distance),2) AS avg_distance_miles, ROUND(AVG(tip_amount),2) AS avg_tip FROM taxi_trips GROUP BY is_weekend ORDER BY is_weekend;'"
+```
+
+**Q10 — Payment Type Analysis**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT CASE WHEN payment_type=1 THEN \"Credit Card\" WHEN payment_type=2 THEN \"Cash\" WHEN payment_type=3 THEN \"No Charge\" WHEN payment_type=4 THEN \"Dispute\" ELSE \"Unknown\" END AS payment_method, COUNT(*) AS trip_count, ROUND(SUM(total_amount),2) AS total_revenue, ROUND(AVG(tip_amount),2) AS avg_tip, ROUND(AVG(total_amount),2) AS avg_fare FROM taxi_trips GROUP BY payment_type ORDER BY trip_count DESC;'"
+```
+
+**Q11 — High-Volume Pickup Zones (>10,000 trips)**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT PULocationID, COUNT(*) AS trip_count, ROUND(AVG(total_amount),2) AS avg_total_amount, ROUND(AVG(tip_amount),2) AS avg_tip, ROUND(SUM(total_amount),2) AS total_revenue FROM taxi_trips GROUP BY PULocationID HAVING COUNT(*) > 10000 ORDER BY trip_count DESC;'"
+```
+
+**Q12 — Monthly Performance**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT pickup_year, pickup_month, COUNT(*) AS trip_count, ROUND(SUM(total_amount),2) AS total_revenue, ROUND(AVG(trip_distance),2) AS avg_distance_miles, ROUND(AVG(trip_duration_min),2) AS avg_duration_min, ROUND(AVG(fare_amount),2) AS avg_fare FROM taxi_trips GROUP BY pickup_year, pickup_month ORDER BY pickup_year, pickup_month;'"
+```
+
+**Q13 — Ratecode Economic Yield ($/mile)**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT CASE WHEN CAST(RatecodeID AS INT)=1 THEN \"Standard Rate\" WHEN CAST(RatecodeID AS INT)=2 THEN \"JFK Airport\" WHEN CAST(RatecodeID AS INT)=3 THEN \"Newark Airport\" WHEN CAST(RatecodeID AS INT)=4 THEN \"Nassau/Westchester\" WHEN CAST(RatecodeID AS INT)=5 THEN \"Negotiated Fare\" WHEN CAST(RatecodeID AS INT)=6 THEN \"Group Ride\" ELSE \"Other/Unknown\" END AS rate_code_description, COUNT(*) AS trip_count, ROUND(SUM(total_amount),2) AS total_revenue, ROUND(AVG(fare_amount),2) AS avg_fare, ROUND(AVG(trip_distance),2) AS avg_distance_miles, ROUND(AVG(avg_speed_mph),2) AS avg_speed_mph, ROUND(AVG(fare_per_mile),2) AS avg_fare_per_mile FROM taxi_trips GROUP BY RatecodeID ORDER BY trip_count DESC;'"
+```
+
+**Q14 — Surcharge & Toll Breakdown (Peak vs Off-Peak)**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT CASE WHEN pickup_hour BETWEEN 16 AND 19 THEN \"Peak Evening (16-19)\" WHEN pickup_hour BETWEEN 7 AND 9 THEN \"Peak Morning (07-09)\" ELSE \"Off-Peak\" END AS time_period, COUNT(*) AS trip_count, ROUND(SUM(total_amount),2) AS total_revenue, ROUND(SUM(congestion_surcharge),2) AS total_congestion_surcharge, ROUND(SUM(cbd_congestion_fee),2) AS total_cbd_fee, ROUND(SUM(Airport_fee),2) AS total_airport_fee, ROUND(SUM(tolls_amount),2) AS total_tolls FROM taxi_trips GROUP BY CASE WHEN pickup_hour BETWEEN 16 AND 19 THEN \"Peak Evening (16-19)\" WHEN pickup_hour BETWEEN 7 AND 9 THEN \"Peak Morning (07-09)\" ELSE \"Off-Peak\" END ORDER BY trip_count DESC;'"
+```
+
+**Q15 — Passenger Count Occupancy Analysis**
+```bash
+docker exec taxi-hive-server bash -c "export HADOOP_CLIENT_OPTS='-Xmx4g' && hive --hiveconf hive.execution.engine=mr --hiveconf hive.cli.print.header=true -e 'USE taxi_analytics; SELECT CAST(passenger_count AS INT) AS passenger_count, COUNT(*) AS trip_count, ROUND(AVG(trip_distance),2) AS avg_distance_miles, ROUND(AVG(total_amount),2) AS avg_total_amount, ROUND(AVG(tip_amount),2) AS avg_tip_amount, ROUND((SUM(tip_amount)/SUM(fare_amount))*100,2) AS tip_percentage FROM taxi_trips WHERE passenger_count BETWEEN 1 AND 6 GROUP BY CAST(passenger_count AS INT) ORDER BY passenger_count ASC;'"
+```
+
+### 🟢 Run Automated Script for All 15 Queries
+
+Or execute all 15 queries automated and write outputs directly into `results/hive/all_queries_output.txt`:
 
 ```bash
-chmod +x hive/run_hive_queries.sh
 bash hive/run_hive_queries.sh
 ```
 
