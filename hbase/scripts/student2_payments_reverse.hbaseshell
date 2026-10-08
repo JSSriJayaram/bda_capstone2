@@ -1,0 +1,57 @@
+# ============================================================
+# student2_payments_reverse.hbaseshell
+# STUDENT 2: Payment Methods & Tipping Behavior Analytics
+# NYC Yellow Taxi HBase Analytics
+# ============================================================
+# Run AFTER: 00_common_setup.hbaseshell
+# Demonstrates: batch ingestion context + simple filter +
+#               advanced composite filter + reverse scan + cached count
+# ============================================================
+
+# -----------------------------------------------------------
+# CONTEXT: Show what was inserted by Student 2's API
+# -----------------------------------------------------------
+count 'nyc_taxi'
+scan 'nyc_taxi', {LIMIT => 3}
+
+# -----------------------------------------------------------
+# SIMPLE FILTER — Student 2
+# Goal: Find all trips paid using Credit Card (payment_type = 1)
+# Filter Type: SingleColumnValueFilter on trip_info:payment_type
+# Business Use: Revenue team separates digital vs cash payments
+# Expected: ~8-9 rows (majority of NYC taxi trips use credit card)
+# -----------------------------------------------------------
+scan 'nyc_taxi', {
+  FILTER => "SingleColumnValueFilter('trip_info', 'payment_type', =, 'binary:1')",
+  LIMIT => 5
+}
+
+# -----------------------------------------------------------
+# ADVANCED FILTER — Student 2
+# Goal: Detect zero-tip rides despite high total fare (anomaly detection)
+# Filter Type: Composite - TWO SingleColumnValueFilters (AND logic)
+#   - tip_amount = 0.0 (passenger gave no tip)
+#   - total_amount >= 15.0 (but the ride cost was significant)
+# Combined with: REVERSED scan to view newest records first
+# Business Use: Driver earnings fairness audit — high-value rides with no tip
+# -----------------------------------------------------------
+scan 'nyc_taxi', {
+  REVERSED => true,
+  LIMIT => 5,
+  FILTER => "SingleColumnValueFilter('financials', 'tip_amount', =, 'binary:0.0') AND SingleColumnValueFilter('financials', 'total_amount', >=, 'binary:15.0')"
+}
+
+# -----------------------------------------------------------
+# ORDER / REVERSE SCAN — Student 2
+# Reverse lexicographical scan: newest row keys appear first
+# Since row key starts with VendorID + datetime, reverse scan
+# shows the latest timestamp trips first per vendor
+# -----------------------------------------------------------
+scan 'nyc_taxi', {REVERSED => true, LIMIT => 3}
+
+# -----------------------------------------------------------
+# COUNT — Student 2
+# Cached batch count: CACHE => 10 fetches 10 rows per RPC call
+# This is faster than the default (CACHE => 1) for large tables
+# -----------------------------------------------------------
+count 'nyc_taxi', CACHE => 10

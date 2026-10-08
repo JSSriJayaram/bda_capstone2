@@ -1,0 +1,85 @@
+# ============================================================
+# student1_ddl_ranges.hbaseshell
+# STUDENT 1: Schema Architecture & Fare/Vendor Analytics
+# NYC Yellow Taxi HBase Analytics
+# ============================================================
+# Run AFTER: 00_common_setup.hbaseshell
+# Demonstrates: schema admin + simple filter + advanced filter
+#               + range scan + interval count
+# ============================================================
+
+# -----------------------------------------------------------
+# SCHEMA ADMINISTRATION (Student 1 specialty)
+# -----------------------------------------------------------
+
+# Show table schema and all column families
+describe 'nyc_taxi'
+
+# List all tables in HBase
+list
+
+# -----------------------------------------------------------
+# SIMPLE FILTER — Student 1
+# Goal: Filter all trips operated by Vendor 2 (VeriFone Inc.)
+# Filter Type: SingleColumnValueFilter on trip_info:payment_type
+# Business Use: Basic vendor segmentation query
+# -----------------------------------------------------------
+scan 'nyc_taxi', {
+  FILTER => "SingleColumnValueFilter('trip_info', 'payment_type', =, 'binary:1')",
+  LIMIT => 5
+}
+
+# -----------------------------------------------------------
+# ADVANCED FILTER — Student 1
+# Goal: High-fare trips (fare >= 25.0) by Vendor 2 on New Year's Day
+# Filter Type: Composite - SingleColumnValueFilter AND RowFilter with regex
+# Projects: Only distance + fare columns (column restriction via COLUMNS)
+# Business Use: Identify premium rides by vendor on a specific date
+# -----------------------------------------------------------
+scan 'nyc_taxi', {
+  COLUMNS => ['trip_info:trip_distance', 'financials:fare_amount', 'financials:total_amount'],
+  FILTER => "SingleColumnValueFilter('financials', 'fare_amount', >=, 'binary:25.0') AND RowFilter(=, 'regexstring:^2_20260101.*')"
+}
+
+# -----------------------------------------------------------
+# ORDER / RANGE SCAN — Student 1
+# Ordered key-range scan: retrieve only Vendor 1 trips
+# Row keys starting with '1_' up to (but not including) '2_'
+# This leverages HBase row key ordering for efficient range scan
+# -----------------------------------------------------------
+scan 'nyc_taxi', {STARTROW => '1_20260101', STOPROW => '2_20260101'}
+
+# -----------------------------------------------------------
+# COUNT — Student 1
+# Interval-based count: reports progress every 5 rows
+# Useful for large tables to confirm record ingestion
+# -----------------------------------------------------------
+count 'nyc_taxi', INTERVAL => 5
+
+# -----------------------------------------------------------
+# SCHEMA EVOLUTION DEMO (DDL Admin — Student 1 exclusive)
+# -----------------------------------------------------------
+# Disable table to perform DDL change
+disable 'nyc_taxi'
+
+# Add a new column family 'audit' (schema evolution)
+alter 'nyc_taxi', NAME => 'audit', VERSIONS => 1
+
+# Re-enable the table
+enable 'nyc_taxi'
+
+# Verify the new column family was added
+describe 'nyc_taxi'
+
+# Insert a sample audit record
+put 'nyc_taxi', '2_20260101001931_137', 'audit:status', 'verified'
+put 'nyc_taxi', '2_20260101001931_137', 'audit:reviewed_by', 'student1'
+
+# Verify the new column
+get 'nyc_taxi', '2_20260101001931_137', {COLUMN => 'audit'}
+
+# Cleanup: remove the demo audit column family
+disable 'nyc_taxi'
+alter 'nyc_taxi', NAME => 'audit', METHOD => 'delete'
+enable 'nyc_taxi'
+describe 'nyc_taxi'

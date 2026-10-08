@@ -1,0 +1,264 @@
+# ============================================================
+# 00_common_setup.hbaseshell
+# COMMON FOUNDATION — ALL STUDENTS MUST DEMONSTRATE THESE
+# NYC Yellow Taxi HBase Analytics
+# Dataset: NYC TLC Yellow Taxi Trip Data (Jan 2026, 7.6M rows)
+# ============================================================
+# Run in HBase shell:
+#   docker exec -it hbase hbase shell
+#   copy-paste commands below
+# ============================================================
+
+# -----------------------------------------------------------
+# STEP 1: CREATE TABLE with 4 Column Families
+# -----------------------------------------------------------
+# Row Key format: {VendorID}_{pickup_datetime_compact}_{PULocationID}
+# Example: 2_20260101005404_239
+# Column Families:
+#   trip_info  -> trip metadata (distance, passengers, location)
+#   financials -> fare, tip, payment
+#   timing     -> pickup/dropoff datetimes, duration
+#   metrics    -> computed analytics (speed, fare/mile)
+
+create 'nyc_taxi', 'trip_info', 'financials', 'timing', 'metrics'
+
+# Verify table was created
+list
+describe 'nyc_taxi'
+
+# -----------------------------------------------------------
+# STEP 2: PUT — Insert 12 Real NYC Taxi Records
+# -----------------------------------------------------------
+# Vendor 1 Trips (VeriFone Inc.)
+put 'nyc_taxi', '1_20260101004035_161', 'trip_info:passenger_count',  '1'
+put 'nyc_taxi', '1_20260101004035_161', 'trip_info:trip_distance',    '0.5'
+put 'nyc_taxi', '1_20260101004035_161', 'trip_info:PULocationID',     '161'
+put 'nyc_taxi', '1_20260101004035_161', 'trip_info:DOLocationID',     '229'
+put 'nyc_taxi', '1_20260101004035_161', 'trip_info:payment_type',     '4'
+put 'nyc_taxi', '1_20260101004035_161', 'financials:fare_amount',     '0.0'
+put 'nyc_taxi', '1_20260101004035_161', 'financials:tip_amount',      '0.0'
+put 'nyc_taxi', '1_20260101004035_161', 'financials:total_amount',    '0.0'
+put 'nyc_taxi', '1_20260101004035_161', 'financials:congestion_surcharge', '0.0'
+put 'nyc_taxi', '1_20260101004035_161', 'timing:pickup_datetime',     '2026-01-01 00:40:35'
+put 'nyc_taxi', '1_20260101004035_161', 'timing:dropoff_datetime',    '2026-01-01 00:45:12'
+put 'nyc_taxi', '1_20260101004035_161', 'timing:trip_duration_min',   '4.62'
+put 'nyc_taxi', '1_20260101004035_161', 'timing:pickup_hour',         '0'
+put 'nyc_taxi', '1_20260101004035_161', 'timing:pickup_day_name',     'Thursday'
+put 'nyc_taxi', '1_20260101004035_161', 'metrics:avg_speed_mph',      '6.49'
+put 'nyc_taxi', '1_20260101004035_161', 'metrics:fare_per_mile',      '0.0'
+put 'nyc_taxi', '1_20260101004035_161', 'metrics:is_weekend',         '0'
+
+put 'nyc_taxi', '1_20260101002316_48', 'trip_info:passenger_count',   '2'
+put 'nyc_taxi', '1_20260101002316_48', 'trip_info:trip_distance',     '2.6'
+put 'nyc_taxi', '1_20260101002316_48', 'trip_info:PULocationID',      '48'
+put 'nyc_taxi', '1_20260101002316_48', 'trip_info:DOLocationID',      '151'
+put 'nyc_taxi', '1_20260101002316_48', 'trip_info:payment_type',      '1'
+put 'nyc_taxi', '1_20260101002316_48', 'financials:fare_amount',      '14.9'
+put 'nyc_taxi', '1_20260101002316_48', 'financials:tip_amount',       '0.0'
+put 'nyc_taxi', '1_20260101002316_48', 'financials:total_amount',     '20.65'
+put 'nyc_taxi', '1_20260101002316_48', 'financials:congestion_surcharge', '2.5'
+put 'nyc_taxi', '1_20260101002316_48', 'timing:pickup_datetime',      '2026-01-01 00:23:16'
+put 'nyc_taxi', '1_20260101002316_48', 'timing:dropoff_datetime',     '2026-01-01 00:37:18'
+put 'nyc_taxi', '1_20260101002316_48', 'timing:trip_duration_min',    '14.03'
+put 'nyc_taxi', '1_20260101002316_48', 'timing:pickup_hour',          '0'
+put 'nyc_taxi', '1_20260101002316_48', 'timing:pickup_day_name',      'Thursday'
+put 'nyc_taxi', '1_20260101002316_48', 'metrics:avg_speed_mph',       '11.12'
+put 'nyc_taxi', '1_20260101002316_48', 'metrics:fare_per_mile',       '7.94'
+put 'nyc_taxi', '1_20260101002316_48', 'metrics:is_weekend',          '0'
+
+put 'nyc_taxi', '1_20260101004153_142', 'trip_info:passenger_count',  '1'
+put 'nyc_taxi', '1_20260101004153_142', 'trip_info:trip_distance',    '10.8'
+put 'nyc_taxi', '1_20260101004153_142', 'trip_info:PULocationID',     '142'
+put 'nyc_taxi', '1_20260101004153_142', 'trip_info:DOLocationID',     '189'
+put 'nyc_taxi', '1_20260101004153_142', 'trip_info:payment_type',     '1'
+put 'nyc_taxi', '1_20260101004153_142', 'financials:fare_amount',     '47.8'
+put 'nyc_taxi', '1_20260101004153_142', 'financials:tip_amount',      '13.4'
+put 'nyc_taxi', '1_20260101004153_142', 'financials:total_amount',    '66.95'
+put 'nyc_taxi', '1_20260101004153_142', 'financials:congestion_surcharge', '2.5'
+put 'nyc_taxi', '1_20260101004153_142', 'timing:pickup_datetime',     '2026-01-01 00:41:53'
+put 'nyc_taxi', '1_20260101004153_142', 'timing:dropoff_datetime',    '2026-01-01 01:23:56'
+put 'nyc_taxi', '1_20260101004153_142', 'timing:trip_duration_min',   '42.05'
+put 'nyc_taxi', '1_20260101004153_142', 'timing:pickup_hour',         '0'
+put 'nyc_taxi', '1_20260101004153_142', 'timing:pickup_day_name',     'Thursday'
+put 'nyc_taxi', '1_20260101004153_142', 'metrics:avg_speed_mph',      '15.41'
+put 'nyc_taxi', '1_20260101004153_142', 'metrics:fare_per_mile',      '6.2'
+put 'nyc_taxi', '1_20260101004153_142', 'metrics:is_weekend',         '0'
+
+put 'nyc_taxi', '1_20260101003854_170', 'trip_info:passenger_count',  '1'
+put 'nyc_taxi', '1_20260101003854_170', 'trip_info:trip_distance',    '9.4'
+put 'nyc_taxi', '1_20260101003854_170', 'trip_info:PULocationID',     '170'
+put 'nyc_taxi', '1_20260101003854_170', 'trip_info:DOLocationID',     '64'
+put 'nyc_taxi', '1_20260101003854_170', 'trip_info:payment_type',     '1'
+put 'nyc_taxi', '1_20260101003854_170', 'financials:fare_amount',     '43.5'
+put 'nyc_taxi', '1_20260101003854_170', 'financials:tip_amount',      '0.0'
+put 'nyc_taxi', '1_20260101003854_170', 'financials:total_amount',    '44.0'
+put 'nyc_taxi', '1_20260101003854_170', 'financials:congestion_surcharge', '0.0'
+put 'nyc_taxi', '1_20260101003854_170', 'timing:pickup_datetime',     '2026-01-01 00:38:54'
+put 'nyc_taxi', '1_20260101003854_170', 'timing:dropoff_datetime',    '2026-01-01 01:28:40'
+put 'nyc_taxi', '1_20260101003854_170', 'timing:trip_duration_min',   '49.77'
+put 'nyc_taxi', '1_20260101003854_170', 'timing:pickup_hour',         '0'
+put 'nyc_taxi', '1_20260101003854_170', 'timing:pickup_day_name',     'Thursday'
+put 'nyc_taxi', '1_20260101003854_170', 'metrics:avg_speed_mph',      '11.33'
+put 'nyc_taxi', '1_20260101003854_170', 'metrics:fare_per_mile',      '4.68'
+put 'nyc_taxi', '1_20260101003854_170', 'metrics:is_weekend',         '0'
+
+# Vendor 2 Trips (Creative Mobile Technologies)
+put 'nyc_taxi', '2_20260101002338_239', 'trip_info:passenger_count',  '1'
+put 'nyc_taxi', '2_20260101002338_239', 'trip_info:trip_distance',    '1.56'
+put 'nyc_taxi', '2_20260101002338_239', 'trip_info:PULocationID',     '239'
+put 'nyc_taxi', '2_20260101002338_239', 'trip_info:DOLocationID',     '151'
+put 'nyc_taxi', '2_20260101002338_239', 'trip_info:payment_type',     '1'
+put 'nyc_taxi', '2_20260101002338_239', 'financials:fare_amount',     '9.3'
+put 'nyc_taxi', '2_20260101002338_239', 'financials:tip_amount',      '4.29'
+put 'nyc_taxi', '2_20260101002338_239', 'financials:total_amount',    '18.59'
+put 'nyc_taxi', '2_20260101002338_239', 'financials:congestion_surcharge', '2.5'
+put 'nyc_taxi', '2_20260101002338_239', 'timing:pickup_datetime',     '2026-01-01 00:23:38'
+put 'nyc_taxi', '2_20260101002338_239', 'timing:dropoff_datetime',    '2026-01-01 00:29:35'
+put 'nyc_taxi', '2_20260101002338_239', 'timing:trip_duration_min',   '5.95'
+put 'nyc_taxi', '2_20260101002338_239', 'timing:pickup_hour',         '0'
+put 'nyc_taxi', '2_20260101002338_239', 'timing:pickup_day_name',     'Thursday'
+put 'nyc_taxi', '2_20260101002338_239', 'metrics:avg_speed_mph',      '15.73'
+put 'nyc_taxi', '2_20260101002338_239', 'metrics:fare_per_mile',      '11.92'
+put 'nyc_taxi', '2_20260101002338_239', 'metrics:is_weekend',         '0'
+
+put 'nyc_taxi', '2_20260101000708_239', 'trip_info:passenger_count',  '3'
+put 'nyc_taxi', '2_20260101000708_239', 'trip_info:trip_distance',    '1.73'
+put 'nyc_taxi', '2_20260101000708_239', 'trip_info:PULocationID',     '239'
+put 'nyc_taxi', '2_20260101000708_239', 'trip_info:DOLocationID',     '236'
+put 'nyc_taxi', '2_20260101000708_239', 'trip_info:payment_type',     '1'
+put 'nyc_taxi', '2_20260101000708_239', 'financials:fare_amount',     '12.1'
+put 'nyc_taxi', '2_20260101000708_239', 'financials:tip_amount',      '1.71'
+put 'nyc_taxi', '2_20260101000708_239', 'financials:total_amount',    '18.81'
+put 'nyc_taxi', '2_20260101000708_239', 'financials:congestion_surcharge', '2.5'
+put 'nyc_taxi', '2_20260101000708_239', 'timing:pickup_datetime',     '2026-01-01 00:07:08'
+put 'nyc_taxi', '2_20260101000708_239', 'timing:dropoff_datetime',    '2026-01-01 00:18:18'
+put 'nyc_taxi', '2_20260101000708_239', 'timing:trip_duration_min',   '11.17'
+put 'nyc_taxi', '2_20260101000708_239', 'timing:pickup_hour',         '0'
+put 'nyc_taxi', '2_20260101000708_239', 'timing:pickup_day_name',     'Thursday'
+put 'nyc_taxi', '2_20260101000708_239', 'metrics:avg_speed_mph',      '9.29'
+put 'nyc_taxi', '2_20260101000708_239', 'metrics:fare_per_mile',      '10.87'
+put 'nyc_taxi', '2_20260101000708_239', 'metrics:is_weekend',         '0'
+
+put 'nyc_taxi', '2_20260101001016_249', 'trip_info:passenger_count',  '1'
+put 'nyc_taxi', '2_20260101001016_249', 'trip_info:trip_distance',    '0.84'
+put 'nyc_taxi', '2_20260101001016_249', 'trip_info:PULocationID',     '249'
+put 'nyc_taxi', '2_20260101001016_249', 'trip_info:DOLocationID',     '68'
+put 'nyc_taxi', '2_20260101001016_249', 'trip_info:payment_type',     '2'
+put 'nyc_taxi', '2_20260101001016_249', 'financials:fare_amount',     '6.5'
+put 'nyc_taxi', '2_20260101001016_249', 'financials:tip_amount',      '0.0'
+put 'nyc_taxi', '2_20260101001016_249', 'financials:total_amount',    '12.25'
+put 'nyc_taxi', '2_20260101001016_249', 'financials:congestion_surcharge', '2.5'
+put 'nyc_taxi', '2_20260101001016_249', 'timing:pickup_datetime',     '2026-01-01 00:10:16'
+put 'nyc_taxi', '2_20260101001016_249', 'timing:dropoff_datetime',    '2026-01-01 00:14:26'
+put 'nyc_taxi', '2_20260101001016_249', 'timing:trip_duration_min',   '4.17'
+put 'nyc_taxi', '2_20260101001016_249', 'timing:pickup_hour',         '0'
+put 'nyc_taxi', '2_20260101001016_249', 'timing:pickup_day_name',     'Thursday'
+put 'nyc_taxi', '2_20260101001016_249', 'metrics:avg_speed_mph',      '12.09'
+put 'nyc_taxi', '2_20260101001016_249', 'metrics:fare_per_mile',      '14.58'
+put 'nyc_taxi', '2_20260101001016_249', 'metrics:is_weekend',         '0'
+
+put 'nyc_taxi', '2_20260101001055_239', 'trip_info:passenger_count',  '1'
+put 'nyc_taxi', '2_20260101001055_239', 'trip_info:trip_distance',    '1.94'
+put 'nyc_taxi', '2_20260101001055_239', 'trip_info:PULocationID',     '239'
+put 'nyc_taxi', '2_20260101001055_239', 'trip_info:DOLocationID',     '236'
+put 'nyc_taxi', '2_20260101001055_239', 'trip_info:payment_type',     '1'
+put 'nyc_taxi', '2_20260101001055_239', 'financials:fare_amount',     '12.1'
+put 'nyc_taxi', '2_20260101001055_239', 'financials:tip_amount',      '3.42'
+put 'nyc_taxi', '2_20260101001055_239', 'financials:total_amount',    '20.52'
+put 'nyc_taxi', '2_20260101001055_239', 'financials:congestion_surcharge', '2.5'
+put 'nyc_taxi', '2_20260101001055_239', 'timing:pickup_datetime',     '2026-01-01 00:10:55'
+put 'nyc_taxi', '2_20260101001055_239', 'timing:dropoff_datetime',    '2026-01-01 00:19:41'
+put 'nyc_taxi', '2_20260101001055_239', 'timing:trip_duration_min',   '8.77'
+put 'nyc_taxi', '2_20260101001055_239', 'timing:pickup_hour',         '0'
+put 'nyc_taxi', '2_20260101001055_239', 'timing:pickup_day_name',     'Thursday'
+put 'nyc_taxi', '2_20260101001055_239', 'metrics:avg_speed_mph',      '13.27'
+put 'nyc_taxi', '2_20260101001055_239', 'metrics:fare_per_mile',      '10.58'
+put 'nyc_taxi', '2_20260101001055_239', 'metrics:is_weekend',         '0'
+
+put 'nyc_taxi', '2_20260101005817_79', 'trip_info:passenger_count',   '2'
+put 'nyc_taxi', '2_20260101005817_79', 'trip_info:trip_distance',     '1.94'
+put 'nyc_taxi', '2_20260101005817_79', 'trip_info:PULocationID',      '79'
+put 'nyc_taxi', '2_20260101005817_79', 'trip_info:DOLocationID',      '233'
+put 'nyc_taxi', '2_20260101005817_79', 'trip_info:payment_type',      '1'
+put 'nyc_taxi', '2_20260101005817_79', 'financials:fare_amount',      '12.8'
+put 'nyc_taxi', '2_20260101005817_79', 'financials:tip_amount',       '3.71'
+put 'nyc_taxi', '2_20260101005817_79', 'financials:total_amount',     '22.26'
+put 'nyc_taxi', '2_20260101005817_79', 'financials:congestion_surcharge', '2.5'
+put 'nyc_taxi', '2_20260101005817_79', 'timing:pickup_datetime',      '2026-01-01 00:58:17'
+put 'nyc_taxi', '2_20260101005817_79', 'timing:dropoff_datetime',     '2026-01-01 01:09:57'
+put 'nyc_taxi', '2_20260101005817_79', 'timing:trip_duration_min',    '11.67'
+put 'nyc_taxi', '2_20260101005817_79', 'timing:pickup_hour',          '0'
+put 'nyc_taxi', '2_20260101005817_79', 'timing:pickup_day_name',      'Thursday'
+put 'nyc_taxi', '2_20260101005817_79', 'metrics:avg_speed_mph',       '9.97'
+put 'nyc_taxi', '2_20260101005817_79', 'metrics:fare_per_mile',       '11.47'
+put 'nyc_taxi', '2_20260101005817_79', 'metrics:is_weekend',          '0'
+
+put 'nyc_taxi', '2_20260101001931_137', 'trip_info:passenger_count',  '3'
+put 'nyc_taxi', '2_20260101001931_137', 'trip_info:trip_distance',    '7.01'
+put 'nyc_taxi', '2_20260101001931_137', 'trip_info:PULocationID',     '137'
+put 'nyc_taxi', '2_20260101001931_137', 'trip_info:DOLocationID',     '225'
+put 'nyc_taxi', '2_20260101001931_137', 'trip_info:payment_type',     '1'
+put 'nyc_taxi', '2_20260101001931_137', 'financials:fare_amount',     '32.4'
+put 'nyc_taxi', '2_20260101001931_137', 'financials:tip_amount',      '9.02'
+put 'nyc_taxi', '2_20260101001931_137', 'financials:total_amount',    '54.11'
+put 'nyc_taxi', '2_20260101001931_137', 'financials:congestion_surcharge', '2.5'
+put 'nyc_taxi', '2_20260101001931_137', 'timing:pickup_datetime',     '2026-01-01 00:19:31'
+put 'nyc_taxi', '2_20260101001931_137', 'timing:dropoff_datetime',    '2026-01-01 00:46:09'
+put 'nyc_taxi', '2_20260101001931_137', 'timing:trip_duration_min',   '26.63'
+put 'nyc_taxi', '2_20260101001931_137', 'timing:pickup_hour',         '0'
+put 'nyc_taxi', '2_20260101001931_137', 'timing:pickup_day_name',     'Thursday'
+put 'nyc_taxi', '2_20260101001931_137', 'metrics:avg_speed_mph',      '15.79'
+put 'nyc_taxi', '2_20260101001931_137', 'metrics:fare_per_mile',      '7.72'
+put 'nyc_taxi', '2_20260101001931_137', 'metrics:is_weekend',         '0'
+
+put 'nyc_taxi', '2_20260101003629_143', 'trip_info:passenger_count',  '1'
+put 'nyc_taxi', '2_20260101003629_143', 'trip_info:trip_distance',    '0.6'
+put 'nyc_taxi', '2_20260101003629_143', 'trip_info:PULocationID',     '143'
+put 'nyc_taxi', '2_20260101003629_143', 'trip_info:DOLocationID',     '239'
+put 'nyc_taxi', '2_20260101003629_143', 'trip_info:payment_type',     '1'
+put 'nyc_taxi', '2_20260101003629_143', 'financials:fare_amount',     '6.5'
+put 'nyc_taxi', '2_20260101003629_143', 'financials:tip_amount',      '2.0'
+put 'nyc_taxi', '2_20260101003629_143', 'financials:total_amount',    '13.5'
+put 'nyc_taxi', '2_20260101003629_143', 'financials:congestion_surcharge', '2.5'
+put 'nyc_taxi', '2_20260101003629_143', 'timing:pickup_datetime',     '2026-01-01 00:36:29'
+put 'nyc_taxi', '2_20260101003629_143', 'timing:dropoff_datetime',    '2026-01-01 00:41:04'
+put 'nyc_taxi', '2_20260101003629_143', 'timing:trip_duration_min',   '4.58'
+put 'nyc_taxi', '2_20260101003629_143', 'timing:pickup_hour',         '0'
+put 'nyc_taxi', '2_20260101003629_143', 'timing:pickup_day_name',     'Thursday'
+put 'nyc_taxi', '2_20260101003629_143', 'metrics:avg_speed_mph',      '7.86'
+put 'nyc_taxi', '2_20260101003629_143', 'metrics:fare_per_mile',      '22.5'
+put 'nyc_taxi', '2_20260101003629_143', 'metrics:is_weekend',         '0'
+
+put 'nyc_taxi', '2_20260101003046_161', 'trip_info:passenger_count',  '1'
+put 'nyc_taxi', '2_20260101003046_161', 'trip_info:trip_distance',    '0.64'
+put 'nyc_taxi', '2_20260101003046_161', 'trip_info:PULocationID',     '161'
+put 'nyc_taxi', '2_20260101003046_161', 'trip_info:DOLocationID',     '237'
+put 'nyc_taxi', '2_20260101003046_161', 'trip_info:payment_type',     '1'
+put 'nyc_taxi', '2_20260101003046_161', 'financials:fare_amount',     '7.9'
+put 'nyc_taxi', '2_20260101003046_161', 'financials:tip_amount',      '2.73'
+put 'nyc_taxi', '2_20260101003046_161', 'financials:total_amount',    '16.38'
+put 'nyc_taxi', '2_20260101003046_161', 'financials:congestion_surcharge', '2.5'
+put 'nyc_taxi', '2_20260101003046_161', 'timing:pickup_datetime',     '2026-01-01 00:30:46'
+put 'nyc_taxi', '2_20260101003046_161', 'timing:dropoff_datetime',    '2026-01-01 00:36:58'
+put 'nyc_taxi', '2_20260101003046_161', 'timing:trip_duration_min',   '6.2'
+put 'nyc_taxi', '2_20260101003046_161', 'timing:pickup_hour',         '0'
+put 'nyc_taxi', '2_20260101003046_161', 'timing:pickup_day_name',     'Thursday'
+put 'nyc_taxi', '2_20260101003046_161', 'metrics:avg_speed_mph',      '6.19'
+put 'nyc_taxi', '2_20260101003046_161', 'metrics:fare_per_mile',      '25.59'
+put 'nyc_taxi', '2_20260101003046_161', 'metrics:is_weekend',         '0'
+
+# Verify insertion count
+count 'nyc_taxi'
+
+# -----------------------------------------------------------
+# STEP 3: GET — Point Lookup Operations (COMMON TO ALL)
+# -----------------------------------------------------------
+
+# GET 3a: Full row retrieval for a specific trip
+get 'nyc_taxi', '2_20260101001931_137'
+
+# GET 3b: Retrieve only one column family (financials)
+get 'nyc_taxi', '2_20260101001931_137', {COLUMN => 'financials'}
+
+# GET 3c: Retrieve a single specific column qualifier
+get 'nyc_taxi', '1_20260101004153_142', {COLUMN => 'financials:total_amount'}

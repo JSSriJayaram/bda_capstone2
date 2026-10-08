@@ -1,0 +1,47 @@
+# ============================================================
+# student4_pagination_metrics.hbaseshell
+# STUDENT 4: Metrics Projection & Server-Side Pagination
+# NYC Yellow Taxi HBase Analytics
+# ============================================================
+# Run AFTER: 00_common_setup.hbaseshell
+# Demonstrates: server-side pagination + column prefix projection
+#               + composite filter scan + full table verification count
+# ============================================================
+
+# -----------------------------------------------------------
+# SIMPLE FILTER — Student 4
+# Goal: Fetch first 3 rows using server-side pagination (PageFilter)
+# Filter Type: PageFilter(3) — evaluated on RegionServer, not client
+# Business Use: Display first page of trips in a dashboard UI
+# Key Point: Filter runs on RegionServer → only 3 rows cross the network
+# -----------------------------------------------------------
+scan 'nyc_taxi', {FILTER => "PageFilter(3)"}
+
+# -----------------------------------------------------------
+# ADVANCED FILTER — Student 4
+# Goal: Find only fare-related columns (ColumnPrefixFilter)
+#       AND additionally filter for high-speed trips (avg_speed_mph > 15.0)
+#       Combined as a composite two-condition server-side filter
+# Filter Type: ColumnPrefixFilter('fare') AND SingleColumnValueFilter on speed
+# Columns returned: fare_amount, fare_per_mile (any column starting with 'fare')
+# Business Use: Fare analytics for fast trips — premium pricing verification
+# -----------------------------------------------------------
+scan 'nyc_taxi', {
+  FILTER => "ColumnPrefixFilter('fare') AND SingleColumnValueFilter('metrics', 'avg_speed_mph', >, 'binary:15.0')"
+}
+
+# -----------------------------------------------------------
+# ORDER / COMPOSITE FILTER SCAN — Student 4
+# Goal: Get only Vendor 2 trips, limited to first 4 rows
+# Filter: PrefixFilter (row key starts with '2_') AND PageFilter(4)
+# This demonstrates combined row-key prefix ordering + server pagination
+# Rows returned in sorted key order within prefix
+# -----------------------------------------------------------
+scan 'nyc_taxi', {FILTER => "PrefixFilter('2_') AND PageFilter(4)"}
+
+# -----------------------------------------------------------
+# COUNT — Student 4
+# Full table row count verification
+# Shows current state of the table after all operations
+# -----------------------------------------------------------
+count 'nyc_taxi'

@@ -1,0 +1,72 @@
+# ============================================================
+# student3_distance_mutations.hbaseshell
+# STUDENT 3: Passenger Capacity & Record Lifecycle
+# NYC Yellow Taxi HBase Analytics
+# ============================================================
+# Run AFTER: 00_common_setup.hbaseshell
+# Demonstrates: delete/deleteall lifecycle + simple filter +
+#               advanced regex filter + column projection scan + count audit
+# ============================================================
+
+# -----------------------------------------------------------
+# SIMPLE FILTER — Student 3
+# Goal: Instant prefix scan for all Vendor 1 trips (faster than full scan)
+# Filter Type: PrefixFilter on row key — no full table scan needed
+# Business Use: Vendor performance comparison (Vendor 1 vs Vendor 2)
+# Explanation: HBase stores rows in sorted key order, so PrefixFilter
+#              stops scanning as soon as keys no longer match prefix.
+# -----------------------------------------------------------
+scan 'nyc_taxi', {
+  FILTER => "PrefixFilter('1_')",
+  LIMIT => 5
+}
+
+# -----------------------------------------------------------
+# ADVANCED FILTER — Student 3
+# Goal: Find solo or couple rides (passenger_count matches 1 or 2)
+#       AND retrieve only trip_info + metrics column families
+#       (skipping financials and timing entirely from disk I/O)
+# Filter Type: SingleColumnValueFilter with regex pattern [1-2]
+# Column Restriction: Only 2 of 4 column families read
+# Business Use: Capacity optimization — most taxis carry 1-2 passengers
+# -----------------------------------------------------------
+scan 'nyc_taxi', {
+  COLUMNS => ['trip_info', 'metrics'],
+  FILTER => "SingleColumnValueFilter('trip_info', 'passenger_count', =, 'regexstring:^[1-2]$')"
+}
+
+# -----------------------------------------------------------
+# ORDER / COLUMN PROJECTION SCAN — Student 3
+# Ordered full table scan but projecting only 3 specific columns
+# (trip_distance, passenger_count, total_amount)
+# Rows come out in sorted row key order (key-ordered by default in HBase)
+# -----------------------------------------------------------
+scan 'nyc_taxi', {
+  COLUMNS => ['trip_info:passenger_count', 'trip_info:trip_distance', 'financials:total_amount'],
+  LIMIT => 4
+}
+
+# -----------------------------------------------------------
+# COUNT AUDIT: Before and After DELETE — Student 3
+# -----------------------------------------------------------
+
+# Step 1: Count before mutation
+count 'nyc_taxi'
+
+# Step 2: Verify the record exists first
+get 'nyc_taxi', '1_20260101004035_161', {COLUMN => 'financials:total_amount'}
+
+# Step 3: DELETE a specific column (erroneous $0.0 fare record - partial delete)
+delete 'nyc_taxi', '1_20260101004035_161', 'financials:tip_amount'
+
+# Step 4: Verify the column is gone (partial delete - row still exists)
+get 'nyc_taxi', '1_20260101004035_161'
+
+# Step 5: DELETEALL - remove the entire zero-fare row (data quality cleanup)
+deleteall 'nyc_taxi', '1_20260101004035_161'
+
+# Step 6: Verify row is completely removed (should return empty)
+get 'nyc_taxi', '1_20260101004035_161'
+
+# Step 7: Count after deletion to confirm 1 row reduced
+count 'nyc_taxi'
