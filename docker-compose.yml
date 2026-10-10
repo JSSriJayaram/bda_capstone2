@@ -96,6 +96,9 @@ services:
     # Image: custom hbase_docker (Java 8, HBase 2.4.19, Maven)
     # --------------------------------------------------------
     hbase:
+        build:
+            context: .
+            dockerfile: Dockerfile.hbase
         image: hbase_docker
         platform: linux/amd64
         hostname: hbase
@@ -103,13 +106,14 @@ services:
         command: ["bash", "-c", "start-hbase.sh && tail -f /dev/null"]
         environment:
             - HBASE_MANAGES_ZK=true
-            - JAVA_HOME=/usr/lib/jvm/java-8
+            - JAVA_HOME=/opt/java/openjdk
             - HBASE_HOME=/root/hbase-bin
         ports:
-            - "16010:16010"   # HBase Master Web UI
-            - "16020:16020"   # HBase RegionServer Web UI
-            - "2181:2181"     # ZooKeeper client port
-            - "16000:16000"   # HBase Master RPC
+            - "16010:16010" # HBase Master Web UI
+            - "16020:16020" # HBase RegionServer Web UI
+            - "2181:2181" # ZooKeeper client port
+            - "16000:16000" # HBase Master RPC
+            - "16030:16030" # HBase RegionServer Web UI
         volumes:
             - hbase_data:/root/hbase-data
             - ./hbase:/root/nyc-taxi-hbase

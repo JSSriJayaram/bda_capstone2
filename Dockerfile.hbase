@@ -1,0 +1,29 @@
+FROM eclipse-temurin:8-jdk-jammy
+
+ARG HBASE_VERSION=2.4.18
+ARG MAVEN_VERSION=3.9.9
+
+ENV HBASE_HOME=/root/hbase-bin \
+    HBASE_CONF_DIR=/root/hbase-bin/conf \
+    JAVA_HOME=/opt/java/openjdk \
+    PATH=/root/hbase-bin/bin:/opt/maven/bin:$PATH
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl procps netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL "https://archive.apache.org/dist/hbase/${HBASE_VERSION}/hbase-${HBASE_VERSION}-bin.tar.gz" -o /tmp/hbase.tar.gz \
+    && mkdir -p /root \
+    && tar -xzf /tmp/hbase.tar.gz -C /root \
+    && mv "/root/hbase-${HBASE_VERSION}" "$HBASE_HOME" \
+    && rm /tmp/hbase.tar.gz \
+    && curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz" -o /tmp/maven.tar.gz \
+    && tar -xzf /tmp/maven.tar.gz -C /opt \
+    && mv "/opt/apache-maven-${MAVEN_VERSION}" /opt/maven \
+    && rm /tmp/maven.tar.gz
+
+COPY hbase/conf/hbase-site.xml ${HBASE_CONF_DIR}/hbase-site.xml
+COPY hbase/conf/hbase-env.sh ${HBASE_CONF_DIR}/hbase-env.sh
+
+WORKDIR /root/nyc-taxi-hbase
+
+CMD ["bash"]
