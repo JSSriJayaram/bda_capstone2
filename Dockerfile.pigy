@@ -1,0 +1,15 @@
+FROM apache/hadoop:3.3.6
+
+ENV PIG_VERSION=0.17.0
+ENV PIG_HOME=/opt/pig
+ENV PATH=$PIG_HOME/bin:$PATH
+
+RUN wget -q https://archive.apache.org/dist/pig/pig-0.17.0/pig-0.17.0.tar.gz && \
+    mkdir -p /tmp/pig && \
+    tar --no-same-owner -xzf pig-0.17.0.tar.gz -C /tmp/pig && \
+    mkdir -p /opt/pig && \
+    cp -a /tmp/pig/pig-0.17.0/. /opt/pig/ && \
+    rm -rf /tmp/pig pig-0.17.0.tar.gz
+
+CMD ["pig", "-x", "local"]
+

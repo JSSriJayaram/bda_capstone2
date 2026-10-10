@@ -70,6 +70,7 @@ public class TaxiMapper extends Mapper<LongWritable, Text, Text, Text> {
 
         // Skip header row
         if (fields[0].trim().equals("VendorID")) return;
+        
 
         // Skip malformed rows with wrong column count
         if (fields.length < EXPECTED_COLS) return;

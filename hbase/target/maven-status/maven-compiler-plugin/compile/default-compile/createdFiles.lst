@@ -1,0 +1,4 @@
+com/nyctaxi/hbase/InsertData.class
+com/nyctaxi/hbase/GetAndDelete.class
+com/nyctaxi/hbase/ScanWithFilter.class
+com/nyctaxi/hbase/CreateTable.class

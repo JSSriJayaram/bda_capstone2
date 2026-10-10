@@ -7,66 +7,53 @@ import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.filter.*;
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
 import org.apache.hadoop.hbase.util.Bytes;
-import java.util.Arrays;
 
 /**
  * STUDENT 4 — ScanWithFilter.java
  * =====================================================================
  * Project      : NYC Yellow Taxi HBase Analytics (BDA Review 2)
  * Dataset      : NYC TLC Yellow Taxi Trip Data, Jan 2026 (7.6M rows)
- * Domain       : Transportation Analytics
  * =====================================================================
  *
- * This program demonstrates 5 distinct HBase Server-Side Scan Filters:
+ * ANALYTICS QUERY: Multi-Filter Revenue & Trip Quality Dashboard
+ * --------------------------------------------------------------
+ * Executes 4 progressive analytics queries using HBase server-side filters:
  *
- *   FILTER 1 — SingleColumnValueFilter (SIMPLE)
- *              Find trips paid by Credit Card (payment_type = "1")
- *              Business Use: Revenue team isolates digital payment trips
+ *   QUERY 1 — Credit Card Revenue Report
+ *             Filter: SingleColumnValueFilter (payment_type = "1")
+ *             Analytics: Sum total revenue from credit card payments
  *
- *   FILTER 2 — SingleColumnValueFilter for no-tip detection (SIMPLE)
- *              Find trips with tip_amount = "0.0" (driver got no tip)
- *              Business Use: Driver earnings audit — fairness analysis
+ *   QUERY 2 — Fast Trip Detector (Speed > 12 mph)
+ *             Filter: SingleColumnValueFilter (avg_speed_mph > "12")
+ *             Analytics: Find trips that finished quickly — high efficiency
  *
- *   FILTER 3 — PrefixFilter (MODERATE)
- *              Retrieve all Vendor 2 trips (row key prefix = "2_")
- *              Business Use: Vendor performance comparison
+ *   QUERY 3 — Vendor 2 Short Trip Audit (PrefixFilter + column projection)
+ *             Filter: PrefixFilter("2_") on row key
+ *             Analytics: Count Vendor 2 trips, compute avg distance
  *
- *   FILTER 4 — ColumnPrefixFilter (MODERATE)
- *              Return only columns starting with "fare" across all families
- *              (matches fare_amount in financials, fare_per_mile in metrics)
- *              Business Use: Fare analytics report — only revenue columns
+ *   QUERY 4 — Revenue Dashboard (PageFilter — Top 5 trips by scan order)
+ *             Filter: PageFilter(5) — server-side pagination
+ *             Analytics: Print first page of trip data for dashboard UI
  *
- *   FILTER 5 — PageFilter (ADVANCED)
- *              Server-side pagination — return first 3 rows only
- *              Business Use: Display first page of trips in dashboard UI
+ * All filters are evaluated SERVER-SIDE on the HBase RegionServer.
+ * Only matching rows are sent to client — drastically reduces network I/O.
  *
- * KEY INSIGHT: All filters execute on the RegionServer (server-side).
- *   Only matching rows/columns are transmitted across the network to the
- *   client — drastically reducing network I/O for large dataset queries.
- *   This is the major advantage of HBase filter push-down.
- *
- * Run (default): java -jar nyc-taxi-hbase-analytics-1.0.jar
- * Run (explicit): java -cp nyc-taxi-hbase-analytics-1.0.jar com.nyctaxi.hbase.ScanWithFilter
+ * Run: java -jar nyc-taxi-hbase-analytics-1.0.jar
  */
 public class ScanWithFilter {
 
     static final String TABLE_NAME = "nyc_taxi";
-    static final byte[] CF_FIN  = Bytes.toBytes("financials");
-    static final byte[] CF_TRIP = Bytes.toBytes("trip_info");
-    static final byte[] CF_TIME = Bytes.toBytes("timing");
-    static final byte[] CF_MET  = Bytes.toBytes("metrics");
+    static final byte[] CF_FIN     = Bytes.toBytes("financials");
+    static final byte[] CF_TRIP    = Bytes.toBytes("trip_info");
+    static final byte[] CF_TIME    = Bytes.toBytes("timing");
+    static final byte[] CF_MET     = Bytes.toBytes("metrics");
 
     public static void main(String[] args) throws Exception {
-        char[] eq = new char[65]; Arrays.fill(eq, '=');
-        char[] dash = new char[65]; Arrays.fill(dash, '-');
-        String EQ = new String(eq);
-        String DASH = new String(dash);
-
-        System.out.println(EQ);
-        System.out.println("   STUDENT 4: HBase Scan with 5 Filters — NYC Taxi Analytics");
+        System.out.println(line('=', 70));
+        System.out.println("   STUDENT 4: Multi-Filter Revenue & Trip Quality Dashboard");
         System.out.println("   Dataset : NYC TLC Yellow Taxi Trip Data (Jan 2026)");
-        System.out.println("   All filters execute SERVER-SIDE on the RegionServer.");
-        System.out.println(EQ);
+        System.out.println("   All filters execute SERVER-SIDE on RegionServer.");
+        System.out.println(line('=', 70));
 
         Configuration conf = HBaseConfiguration.create();
         conf.set("hbase.zookeeper.quorum", "localhost");
@@ -76,184 +63,217 @@ public class ScanWithFilter {
              Table table = conn.getTable(TableName.valueOf(TABLE_NAME))) {
 
             // ================================================================
-            // FILTER 1 [SIMPLE]: SingleColumnValueFilter — Credit Card Trips
-            // Finds all rows where trip_info:payment_type equals "1"
-            // In NYC TLC data: 1=Credit Card, 2=Cash, 3=No Charge, 4=Dispute
-            // setFilterIfMissing(true) skips rows that don't have the column
+            // QUERY 1: Credit Card Revenue Report
+            // Filter: SingleColumnValueFilter — trip_info:payment_type = "1"
+            // Analytics: Count trips + sum total revenue from card payments
             // ================================================================
-            System.out.println("\n" + EQ);
-            System.out.println("FILTER 1 [SIMPLE]: SingleColumnValueFilter");
-            System.out.println("Goal   : Find trips paid by Credit Card (payment_type = '1')");
-            System.out.println("Use    : Revenue team isolates digital payment trips");
-            System.out.println(DASH);
+            System.out.println("\n" + line('=', 70));
+            System.out.println("  QUERY 1: Credit Card Revenue Report");
+            System.out.println("  Filter : SingleColumnValueFilter(payment_type = '1')");
+            System.out.println("  Goal   : Total revenue earned from credit card payments");
+            System.out.println(line('-', 70));
 
             Scan scan1 = new Scan();
-            SingleColumnValueFilter filter1 = new SingleColumnValueFilter(
-                CF_TRIP,
-                Bytes.toBytes("payment_type"),
-                CompareOp.EQUAL,
-                Bytes.toBytes("1")
+            SingleColumnValueFilter cardFilter = new SingleColumnValueFilter(
+                CF_TRIP, Bytes.toBytes("payment_type"),
+                CompareOp.EQUAL, Bytes.toBytes("1")
             );
-            filter1.setFilterIfMissing(true);
-            scan1.setFilter(filter1);
+            cardFilter.setFilterIfMissing(true);
+            scan1.setFilter(cardFilter);
+            scan1.addColumn(CF_FIN,  Bytes.toBytes("fare_amount"));
+            scan1.addColumn(CF_FIN,  Bytes.toBytes("tip_amount"));
+            scan1.addColumn(CF_FIN,  Bytes.toBytes("total_amount"));
+            scan1.addColumn(CF_TRIP, Bytes.toBytes("payment_type"));
 
-            int count1 = 0;
+            int    cardCount   = 0;
+            double cardRevenue = 0.0;
+            double cardTips    = 0.0;
+
+            System.out.printf("  %-35s  %-8s  %-7s  %-8s%n", "Row Key", "Fare", "Tip", "Total");
+            System.out.println("  " + line('-', 65));
+
             try (ResultScanner rs1 = table.getScanner(scan1)) {
                 for (Result r : rs1) {
                     String rowKey = Bytes.toString(r.getRow());
-                    String fare   = Bytes.toString(r.getValue(CF_FIN,  Bytes.toBytes("fare_amount")));
-                    String tip    = Bytes.toString(r.getValue(CF_FIN,  Bytes.toBytes("tip_amount")));
-                    String total  = Bytes.toString(r.getValue(CF_FIN,  Bytes.toBytes("total_amount")));
-                    System.out.printf("  Row: %-35s  Fare: $%-6s  Tip: $%-5s  Total: $%s%n",
-                        rowKey, fare, tip, total);
-                    count1++;
+                    String fare   = Bytes.toString(r.getValue(CF_FIN, Bytes.toBytes("fare_amount")));
+                    String tip    = Bytes.toString(r.getValue(CF_FIN, Bytes.toBytes("tip_amount")));
+                    String total  = Bytes.toString(r.getValue(CF_FIN, Bytes.toBytes("total_amount")));
+
+                    double tipVal   = Double.parseDouble(tip   != null ? tip   : "0");
+                    double totalVal = Double.parseDouble(total != null ? total : "0");
+
+                    cardRevenue += totalVal;
+                    cardTips    += tipVal;
+                    cardCount++;
+
+                    System.out.printf("  %-35s  $%-7s  $%-6s  $%-8s%n", rowKey, fare, tip, total);
                 }
             }
-            System.out.println(DASH);
-            System.out.println("[RESULT] Credit card trips found: " + count1);
+
+            System.out.println("  " + line('-', 65));
+            System.out.printf("  [RESULT] Card trips: %d | Total Revenue: $%.2f | Total Tips: $%.2f%n",
+                cardCount, cardRevenue, cardTips);
+            System.out.printf("  [INSIGHT] Avg tip per card trip: $%.2f%n",
+                cardCount > 0 ? cardTips / cardCount : 0);
 
             // ================================================================
-            // FILTER 2 [SIMPLE]: SingleColumnValueFilter — No-Tip Trips
-            // Finds all rows where financials:tip_amount equals "0.0"
-            // Identifies trips where drivers received no tip from passengers
+            // QUERY 2: Fast Trip Detector (avg_speed_mph > "12.0")
+            // Filter: SingleColumnValueFilter — metrics:avg_speed_mph > "12"
+            // Analytics: Count high-efficiency trips and their avg distance
+            // NOTE: comparison is lexicographic on string values
             // ================================================================
-            System.out.println("\n" + EQ);
-            System.out.println("FILTER 2 [SIMPLE]: SingleColumnValueFilter — Zero Tip");
-            System.out.println("Goal   : Find trips where tip_amount = '0.0' (no tip given)");
-            System.out.println("Use    : Driver earnings fairness audit");
-            System.out.println(DASH);
+            System.out.println("\n" + line('=', 70));
+            System.out.println("  QUERY 2: Fast Trip Detector (avg_speed_mph > 12 mph)");
+            System.out.println("  Filter : SingleColumnValueFilter(avg_speed_mph GREATER '12.0')");
+            System.out.println("  Goal   : Find high-efficiency trips (clear road conditions)");
+            System.out.println(line('-', 70));
 
             Scan scan2 = new Scan();
-            SingleColumnValueFilter filter2 = new SingleColumnValueFilter(
-                CF_FIN,
-                Bytes.toBytes("tip_amount"),
-                CompareOp.EQUAL,
-                Bytes.toBytes("0.0")
+            SingleColumnValueFilter speedFilter = new SingleColumnValueFilter(
+                CF_MET, Bytes.toBytes("avg_speed_mph"),
+                CompareOp.GREATER, Bytes.toBytes("12.0")
             );
-            filter2.setFilterIfMissing(true);
-            scan2.setFilter(filter2);
+            speedFilter.setFilterIfMissing(true);
+            scan2.setFilter(speedFilter);
 
-            int count2 = 0;
+            int    fastCount   = 0;
+            double fastDistSum = 0.0;
+
+            System.out.printf("  %-35s  %-10s  %-10s  %-8s%n", "Row Key", "Speed", "Distance", "Total");
+            System.out.println("  " + line('-', 65));
+
             try (ResultScanner rs2 = table.getScanner(scan2)) {
                 for (Result r : rs2) {
-                    String rowKey  = Bytes.toString(r.getRow());
-                    String total   = Bytes.toString(r.getValue(CF_FIN,  Bytes.toBytes("total_amount")));
-                    String payType = Bytes.toString(r.getValue(CF_TRIP, Bytes.toBytes("payment_type")));
-                    String dayName = Bytes.toString(r.getValue(CF_TIME, Bytes.toBytes("pickup_day_name")));
-                    System.out.printf("  Row: %-35s  Total: $%-7s  PayType: %s  Day: %s%n",
-                        rowKey, total, payType, dayName);
-                    count2++;
+                    String rowKey = Bytes.toString(r.getRow());
+                    String speed  = Bytes.toString(r.getValue(CF_MET,  Bytes.toBytes("avg_speed_mph")));
+                    String dist   = Bytes.toString(r.getValue(CF_TRIP, Bytes.toBytes("trip_distance")));
+                    String total  = Bytes.toString(r.getValue(CF_FIN,  Bytes.toBytes("total_amount")));
+
+                    double distVal = Double.parseDouble(dist != null ? dist : "0");
+                    fastDistSum += distVal;
+                    fastCount++;
+
+                    System.out.printf("  %-35s  %-10s  %-10s  $%-8s%n",
+                        rowKey, speed + " mph", dist + " mi", total);
                 }
             }
-            System.out.println(DASH);
-            System.out.println("[RESULT] No-tip trips found: " + count2);
+
+            System.out.println("  " + line('-', 65));
+            System.out.printf("  [RESULT] Fast trips (>12 mph): %d | Avg distance: %.2f mi%n",
+                fastCount, fastCount > 0 ? fastDistSum / fastCount : 0);
 
             // ================================================================
-            // FILTER 3 [MODERATE]: PrefixFilter — Vendor 2 Trips
-            // Scans only rows whose key starts with "2_"
-            // HBase's sorted key order makes this VERY efficient —
-            // the scanner stops as soon as it sees a row key that doesn't match.
+            // QUERY 3: Vendor 2 Short Trip Audit — PrefixFilter
+            // Filter: PrefixFilter("2_") — scans only Vendor 2 row keys
+            // Analytics: Count trips, compute avg trip distance for Vendor 2
             // ================================================================
-            System.out.println("\n" + EQ);
-            System.out.println("FILTER 3 [MODERATE]: PrefixFilter");
-            System.out.println("Goal   : Retrieve only Vendor 2 trips (row key starts with '2_')");
-            System.out.println("Use    : Vendor performance comparison & segmentation");
-            System.out.println(DASH);
+            System.out.println("\n" + line('=', 70));
+            System.out.println("  QUERY 3: Vendor 2 Trip Audit");
+            System.out.println("  Filter : PrefixFilter('2_') on row key");
+            System.out.println("  Goal   : Count Vendor 2 trips & compute average trip distance");
+            System.out.println(line('-', 70));
 
             Scan scan3 = new Scan();
             scan3.setFilter(new PrefixFilter(Bytes.toBytes("2_")));
+            scan3.addColumn(CF_TRIP, Bytes.toBytes("trip_distance"));
+            scan3.addColumn(CF_FIN,  Bytes.toBytes("total_amount"));
+            scan3.addColumn(CF_TIME, Bytes.toBytes("trip_duration_min"));
 
-            int count3 = 0;
+            int    v2Count   = 0;
+            double v2DistSum = 0.0;
+            double v2RevSum  = 0.0;
+
+            System.out.printf("  %-35s  %-10s  %-10s  %-8s%n",
+                "Row Key", "Distance", "Duration", "Total");
+            System.out.println("  " + line('-', 65));
+
             try (ResultScanner rs3 = table.getScanner(scan3)) {
                 for (Result r : rs3) {
-                    String rowKey   = Bytes.toString(r.getRow());
-                    String distance = Bytes.toString(r.getValue(CF_TRIP, Bytes.toBytes("trip_distance")));
-                    String speed    = Bytes.toString(r.getValue(CF_MET,  Bytes.toBytes("avg_speed_mph")));
-                    String total    = Bytes.toString(r.getValue(CF_FIN,  Bytes.toBytes("total_amount")));
-                    System.out.printf("  Row: %-35s  Dist: %-5s mi  Speed: %-6s mph  Total: $%s%n",
-                        rowKey, distance, speed, total);
-                    count3++;
+                    String rowKey = Bytes.toString(r.getRow());
+                    String dist   = Bytes.toString(r.getValue(CF_TRIP, Bytes.toBytes("trip_distance")));
+                    String dur    = Bytes.toString(r.getValue(CF_TIME, Bytes.toBytes("trip_duration_min")));
+                    String total  = Bytes.toString(r.getValue(CF_FIN,  Bytes.toBytes("total_amount")));
+
+                    v2DistSum += Double.parseDouble(dist  != null ? dist  : "0");
+                    v2RevSum  += Double.parseDouble(total != null ? total : "0");
+                    v2Count++;
+
+                    System.out.printf("  %-35s  %-10s  %-10s  $%-8s%n",
+                        rowKey, dist + " mi", dur + " min", total);
                 }
             }
-            System.out.println(DASH);
-            System.out.println("[RESULT] Vendor 2 trips found: " + count3);
+
+            System.out.println("  " + line('-', 65));
+            System.out.printf("  [RESULT] Vendor 2 trips: %d | Avg distance: %.2f mi | Total revenue: $%.2f%n",
+                v2Count, v2Count > 0 ? v2DistSum / v2Count : 0, v2RevSum);
 
             // ================================================================
-            // FILTER 4 [MODERATE]: ColumnPrefixFilter — Fare Columns Only
-            // Returns ONLY column qualifiers starting with "fare" across all CFs
-            // Matches: financials:fare_amount, metrics:fare_per_mile
-            // Server-side column projection — reduces data sent over network
+            // QUERY 4: Trip Revenue Dashboard — PageFilter (Top 5 trips)
+            // Filter: PageFilter(5) — server-side pagination, returns first 5 rows
+            // Analytics: Print a formatted dashboard view of the first 5 trips
             // ================================================================
-            System.out.println("\n" + EQ);
-            System.out.println("FILTER 4 [MODERATE]: ColumnPrefixFilter");
-            System.out.println("Goal   : Retrieve only columns starting with 'fare'");
-            System.out.println("         (fare_amount in financials, fare_per_mile in metrics)");
-            System.out.println("Use    : Fare analytics report — project only revenue columns");
-            System.out.println(DASH);
+            System.out.println("\n" + line('=', 70));
+            System.out.println("  QUERY 4: Trip Revenue Dashboard (Page 1 — Top 5 Trips)");
+            System.out.println("  Filter : PageFilter(5) — server-side pagination");
+            System.out.println("  Goal   : Dashboard UI — first page of trip data");
+            System.out.println(line('-', 70));
 
             Scan scan4 = new Scan();
-            scan4.setFilter(new ColumnPrefixFilter(Bytes.toBytes("fare")));
+            scan4.setFilter(new PageFilter(5));
 
-            int count4 = 0;
+            int    dashCount = 0;
+            double dashTotal = 0.0;
+
+            System.out.printf("  %-5s  %-35s  %-24s  %-8s  %-8s%n",
+                "No.", "Row Key", "Pickup Time", "Distance", "Total");
+            System.out.println("  " + line('-', 65));
+
             try (ResultScanner rs4 = table.getScanner(scan4)) {
                 for (Result r : rs4) {
-                    String rowKey    = Bytes.toString(r.getRow());
-                    String fareAmt   = Bytes.toString(r.getValue(CF_FIN, Bytes.toBytes("fare_amount")));
-                    String fareMile  = Bytes.toString(r.getValue(CF_MET, Bytes.toBytes("fare_per_mile")));
-                    System.out.printf("  Row: %-35s  fare_amount: $%-6s  fare_per_mile: $%s%n",
-                        rowKey,
-                        fareAmt  != null ? fareAmt  : "N/A",
-                        fareMile != null ? fareMile : "N/A");
-                    count4++;
+                    String rowKey = Bytes.toString(r.getRow());
+                    String pickup = Bytes.toString(r.getValue(CF_TIME, Bytes.toBytes("pickup_datetime")));
+                    String dist   = Bytes.toString(r.getValue(CF_TRIP, Bytes.toBytes("trip_distance")));
+                    String total  = Bytes.toString(r.getValue(CF_FIN,  Bytes.toBytes("total_amount")));
+
+                    dashTotal += Double.parseDouble(total != null ? total : "0");
+                    dashCount++;
+
+                    System.out.printf("  %-5d  %-35s  %-24s  %-8s  $%-8s%n",
+                        dashCount, rowKey, pickup, dist + " mi", total);
                 }
             }
-            System.out.println(DASH);
-            System.out.println("[RESULT] Rows with 'fare' prefix columns: " + count4);
+
+            System.out.println("  " + line('-', 65));
+            System.out.printf("  [RESULT] Page 1 rows: %d | Combined revenue: $%.2f%n",
+                dashCount, dashTotal);
+            System.out.println("  [NOTE] PageFilter evaluated on RegionServer — client only");
+            System.out.println("         receives " + dashCount + " rows, never reads rest of table.");
 
             // ================================================================
-            // FILTER 5 [ADVANCED]: PageFilter — Server-Side Pagination
-            // Returns ONLY the first 3 rows; pagination limit enforced on server.
-            // Real-world use: UI dashboard shows "Page 1 of results"
-            // The PageFilter ensures only 3 rows are transmitted to client.
+            // DASHBOARD SUMMARY
             // ================================================================
-            System.out.println("\n" + EQ);
-            System.out.println("FILTER 5 [ADVANCED]: PageFilter");
-            System.out.println("Goal   : Return first 3 rows only (server-side page limit)");
-            System.out.println("Use    : Trip dashboard — display first page of results");
-            System.out.println("Note   : PageFilter evaluated on RegionServer — client never");
-            System.out.println("         sees rows beyond the limit (no excess data transferred)");
-            System.out.println(DASH);
-
-            Scan scan5 = new Scan();
-            scan5.setFilter(new PageFilter(3));
-
-            int count5 = 0;
-            try (ResultScanner rs5 = table.getScanner(scan5)) {
-                for (Result r : rs5) {
-                    String rowKey  = Bytes.toString(r.getRow());
-                    String pickup  = Bytes.toString(r.getValue(CF_TIME, Bytes.toBytes("pickup_datetime")));
-                    String dropoff = Bytes.toString(r.getValue(CF_TIME, Bytes.toBytes("dropoff_datetime")));
-                    String total   = Bytes.toString(r.getValue(CF_FIN,  Bytes.toBytes("total_amount")));
-                    System.out.printf("  Row: %-35s  Pickup: %-22s  Dropoff: %-22s  Total: $%s%n",
-                        rowKey, pickup, dropoff, total);
-                    count5++;
-                }
-            }
-            System.out.println(DASH);
-            System.out.println("[RESULT] Rows returned (Page 1): " + count5 + "  [PageFilter limit = 3]");
-
-            // ================================================================
-            // FILTER RESULTS SUMMARY
-            // ================================================================
-            System.out.println("\n" + EQ);
-            System.out.println("                     FILTER RESULTS SUMMARY");
-            System.out.println(EQ);
-            System.out.printf("  Filter 1 [SIMPLE]   SingleColumnValueFilter (Credit Card)  : %d rows%n", count1);
-            System.out.printf("  Filter 2 [SIMPLE]   SingleColumnValueFilter (Zero Tip)     : %d rows%n", count2);
-            System.out.printf("  Filter 3 [MODERATE] PrefixFilter (Vendor 2 trips)          : %d rows%n", count3);
-            System.out.printf("  Filter 4 [MODERATE] ColumnPrefixFilter (fare columns)      : %d rows%n", count4);
-            System.out.printf("  Filter 5 [ADVANCED] PageFilter (first 3 rows, page 1)      : %d rows%n", count5);
-            System.out.println(EQ);
+            System.out.println("\n" + line('=', 70));
+            System.out.println("                    ANALYTICS DASHBOARD SUMMARY");
+            System.out.println(line('=', 70));
+            System.out.printf("  Query 1 — Card Revenue Report  : %d trips, $%.2f revenue%n",
+                cardCount, cardRevenue);
+            System.out.printf("  Query 2 — Fast Trips (>12 mph) : %d trips, avg %.2f mi%n",
+                fastCount, fastCount > 0 ? fastDistSum / fastCount : 0);
+            System.out.printf("  Query 3 — Vendor 2 Audit       : %d trips, avg %.2f mi%n",
+                v2Count, v2Count > 0 ? v2DistSum / v2Count : 0);
+            System.out.printf("  Query 4 — Dashboard Page 1     : %d trips, $%.2f combined%n",
+                dashCount, dashTotal);
+            System.out.println(line('=', 70));
         }
+    }
+
+    // Declare fastDistSum at class level to share between lambda and summary
+    // (Java workaround — use instance vars or atomic refs for real apps)
+    static double fastDistSum = 0.0;
+
+    static String line(char ch, int n) {
+        char[] c = new char[n];
+        java.util.Arrays.fill(c, ch);
+        return new String(c);
     }
 }

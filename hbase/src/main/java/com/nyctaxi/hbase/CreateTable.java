@@ -5,53 +5,42 @@ import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.util.Bytes;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * STUDENT 1 — CreateTable.java
+ * STUDENT 1 — TripVolumeReport.java (CreateTable.java)
  * =====================================================================
  * Project      : NYC Yellow Taxi HBase Analytics (BDA Review 2)
  * Dataset      : NYC TLC Yellow Taxi Trip Data, Jan 2026 (7.6M rows)
- * Domain       : Transportation Analytics
  * =====================================================================
  *
- * This program uses the HBase Java Admin API to:
- *   1. Connect to HBase via ZooKeeper
- *   2. Drop the existing 'nyc_taxi' table (if present)
- *   3. Create the table with 4 carefully designed Column Families:
- *      - trip_info  : trip metadata (distance, passengers, location IDs)
- *      - financials : fare, tip, payment type, congestion surcharge
- *      - timing     : pickup/dropoff timestamps, duration, hour, day name
- *      - metrics    : derived analytics (avg_speed_mph, fare_per_mile, is_weekend)
- *   4. Print a structured summary of the schema
+ * ANALYTICS QUERY: Trip Volume & Revenue Report by Vendor
+ * --------------------------------------------------------
+ * 1. Creates the nyc_taxi table with 4 column families (Admin API)
+ * 2. Scans the table and groups rows by VendorID (extracted from row key)
+ * 3. For each vendor: counts trips, sums total revenue, sums distances
+ * 4. Prints a formatted analytics summary table
  *
- * Row Key Design: {VendorID}_{pickup_datetime_compact}_{PULocationID}
- *   Example: 2_20260101005404_239
- *   Rationale:
- *     - Enables prefix scans by VendorID (vendor analytics)
- *     - Enables range scans by date (time-range analytics)
- *     - Prevents region hot-spotting (distributed across vendors + times)
+ * Business Question: "Which vendor processes more trips and earns more revenue?"
  *
- * Column Family Rationale:
- *   - trip_info  : queried for geographic and capacity analytics
- *   - financials : queried for payment and revenue analytics
- *   - timing     : queried for temporal and peak-hour analytics
- *   - metrics    : queried for performance dashboards
- *   Separating into 4 CFs enables column-family locality — each query
- *   reads only the relevant HFiles from disk, reducing I/O significantly.
+ * Row Key Design: {VendorID}_{pickup_datetime}_{PULocationID}
+ *   - VendorID prefix enables O(1) vendor grouping during scan (no extra index)
+ *   - Row key prefix "1_" = Vendor 1 (VeriFone), "2_" = Vendor 2 (Creative Mobile)
  *
  * Run: java -cp nyc-taxi-hbase-analytics-1.0.jar com.nyctaxi.hbase.CreateTable
  */
 public class CreateTable {
 
-    static final String TABLE_NAME = "nyc_taxi";
-    static final byte[] CF_TRIP_INFO  = Bytes.toBytes("trip_info");
-    static final byte[] CF_FINANCIALS = Bytes.toBytes("financials");
-    static final byte[] CF_TIMING     = Bytes.toBytes("timing");
-    static final byte[] CF_METRICS    = Bytes.toBytes("metrics");
+    static final String TABLE_NAME  = "nyc_taxi";
+    static final byte[] CF_TRIP     = Bytes.toBytes("trip_info");
+    static final byte[] CF_FIN      = Bytes.toBytes("financials");
+    static final byte[] CF_TIMING   = Bytes.toBytes("timing");
+    static final byte[] CF_METRICS  = Bytes.toBytes("metrics");
 
     public static void main(String[] args) throws Exception {
         System.out.println(line('=', 65));
-        System.out.println("   STUDENT 1: HBase Table Creation — NYC Taxi Analytics");
+        System.out.println("   STUDENT 1: Trip Volume & Revenue Report by Vendor");
         System.out.println("   Dataset : NYC TLC Yellow Taxi Trip Data (Jan 2026)");
         System.out.println(line('=', 65));
 
@@ -60,63 +49,96 @@ public class CreateTable {
         conf.set("hbase.zookeeper.property.clientPort", "2181");
 
         try (Connection conn = ConnectionFactory.createConnection(conf);
-             Admin admin = conn.getAdmin()) {
+             Admin admin = conn.getAdmin();
+             Table table = conn.getTable(TableName.valueOf(TABLE_NAME))) {
 
+            // ============================================================
+            // STEP 1: Create table if it doesn't already exist
+            // ============================================================
             TableName tableName = TableName.valueOf(TABLE_NAME);
 
-            // Drop existing table to allow clean re-creation
-            if (admin.tableExists(tableName)) {
-                System.out.println("[INFO] Table '" + TABLE_NAME + "' already exists. Dropping...");
-                admin.disableTable(tableName);
-                admin.deleteTable(tableName);
-                System.out.println("[INFO] Old table dropped successfully.");
+            if (!admin.tableExists(tableName)) {
+                System.out.println("[INFO] Creating table '" + TABLE_NAME + "' with 4 column families...");
+                TableDescriptorBuilder tdb = TableDescriptorBuilder.newBuilder(tableName);
+                tdb.setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(CF_TRIP).setMaxVersions(1).build());
+                tdb.setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(CF_FIN).setMaxVersions(1).build());
+                tdb.setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(CF_TIMING).setMaxVersions(1).build());
+                tdb.setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder(CF_METRICS).setMaxVersions(1).build());
+                admin.createTable(tdb.build());
+                System.out.println("[SUCCESS] Table created.\n");
+            } else {
+                System.out.println("[INFO] Table already exists. Skipping creation.\n");
             }
 
-            // Build TableDescriptor with 4 Column Families
-            TableDescriptorBuilder tdb = TableDescriptorBuilder.newBuilder(tableName);
-
-            // CF1: trip_info — core trip metadata, geographic data
-            tdb.setColumnFamily(
-                ColumnFamilyDescriptorBuilder.newBuilder(CF_TRIP_INFO)
-                    .setMaxVersions(1)
-                    .build()
-            );
-
-            // CF2: financials — fare, tip, payment type, tolls
-            tdb.setColumnFamily(
-                ColumnFamilyDescriptorBuilder.newBuilder(CF_FINANCIALS)
-                    .setMaxVersions(1)
-                    .build()
-            );
-
-            // CF3: timing — pickup/dropoff datetimes, duration, temporal fields
-            tdb.setColumnFamily(
-                ColumnFamilyDescriptorBuilder.newBuilder(CF_TIMING)
-                    .setMaxVersions(1)
-                    .build()
-            );
-
-            // CF4: metrics — computed analytics (speed, fare/mile, weekend flag)
-            tdb.setColumnFamily(
-                ColumnFamilyDescriptorBuilder.newBuilder(CF_METRICS)
-                    .setMaxVersions(1)
-                    .build()
-            );
-
-            admin.createTable(tdb.build());
-
-            System.out.println("[SUCCESS] Table '" + TABLE_NAME + "' created with 4 column families:");
+            // ============================================================
+            // STEP 2: ANALYTICS QUERY — Scan & compute per-vendor stats
+            // ============================================================
             System.out.println(line('-', 65));
-            System.out.println("  CF1 trip_info  : passenger_count, trip_distance, PULocationID,");
-            System.out.println("                   DOLocationID, payment_type");
-            System.out.println("  CF2 financials : fare_amount, tip_amount, total_amount,");
-            System.out.println("                   congestion_surcharge");
-            System.out.println("  CF3 timing     : pickup_datetime, dropoff_datetime,");
-            System.out.println("                   trip_duration_min, pickup_hour, pickup_day_name");
-            System.out.println("  CF4 metrics    : avg_speed_mph, fare_per_mile, is_weekend");
+            System.out.println("  ANALYTICS: Trip Volume & Revenue Report by VendorID");
             System.out.println(line('-', 65));
-            System.out.println("  Row Key Format : {VendorID}_{pickup_datetime}_{PULocationID}");
-            System.out.println("  Example Key    : 2_20260101005404_239");
+
+            // Counters per vendor
+            Map<String, Integer> tripCount   = new HashMap<>();
+            Map<String, Double>  totalRevenue = new HashMap<>();
+            Map<String, Double>  totalDist    = new HashMap<>();
+            tripCount.put("1", 0);   tripCount.put("2", 0);
+            totalRevenue.put("1", 0.0); totalRevenue.put("2", 0.0);
+            totalDist.put("1", 0.0);    totalDist.put("2", 0.0);
+
+            Scan scan = new Scan();
+            scan.addColumn(CF_FIN,  Bytes.toBytes("total_amount"));
+            scan.addColumn(CF_TRIP, Bytes.toBytes("trip_distance"));
+
+            try (ResultScanner rs = table.getScanner(scan)) {
+                for (Result r : rs) {
+                    String rowKey  = Bytes.toString(r.getRow());
+                    String vendor  = rowKey.substring(0, 1);   // "1" or "2"
+
+                    String totalStr = Bytes.toString(r.getValue(CF_FIN, Bytes.toBytes("total_amount")));
+                    String distStr  = Bytes.toString(r.getValue(CF_TRIP, Bytes.toBytes("trip_distance")));
+
+                    double total = (totalStr != null) ? Double.parseDouble(totalStr) : 0.0;
+                    double dist  = (distStr  != null) ? Double.parseDouble(distStr)  : 0.0;
+
+                    if (tripCount.containsKey(vendor)) {
+                        tripCount.put(vendor, tripCount.get(vendor) + 1);
+                        totalRevenue.put(vendor, totalRevenue.get(vendor) + total);
+                        totalDist.put(vendor, totalDist.get(vendor) + dist);
+                    }
+                }
+            }
+
+            // ============================================================
+            // STEP 3: Print formatted analytics report
+            // ============================================================
+            System.out.println();
+            System.out.printf("  %-12s  %-10s  %-14s  %-12s  %-13s%n",
+                "VendorID", "Trips", "Total Revenue", "Total Dist", "Avg Fare/Trip");
+            System.out.println("  " + line('-', 63));
+
+            for (String v : new String[]{"1", "2"}) {
+                int    trips   = tripCount.get(v);
+                double rev     = totalRevenue.get(v);
+                double dist    = totalDist.get(v);
+                double avgFare = (trips > 0) ? rev / trips : 0.0;
+                String vName   = v.equals("1") ? "1 (VeriFone)" : "2 (Creative)";
+                System.out.printf("  %-12s  %-10d  $%-13.2f  %-12.2f  $%-13.2f%n",
+                    vName, trips, rev, dist, avgFare);
+            }
+
+            System.out.println("  " + line('-', 63));
+            System.out.println();
+
+            int    totalTrips = tripCount.get("1") + tripCount.get("2");
+            double grandRev   = totalRevenue.get("1") + totalRevenue.get("2");
+            System.out.printf("  %-12s  %-10d  $%-13.2f%n", "TOTAL", totalTrips, grandRev);
+            System.out.println();
+
+            // Analytics insight
+            String topVendor = totalRevenue.get("1") > totalRevenue.get("2") ? "Vendor 1 (VeriFone)" : "Vendor 2 (Creative Mobile)";
+            System.out.println("  [INSIGHT] Highest revenue vendor: " + topVendor);
+            System.out.println("  [INSIGHT] Column families read  : trip_info + financials only");
+            System.out.println("  [INSIGHT] Other 2 CFs (timing, metrics) skipped — zero disk I/O");
             System.out.println(line('=', 65));
         }
     }
