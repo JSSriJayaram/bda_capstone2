@@ -20,6 +20,10 @@ data/processed/*
 *.jar
 mapreduce/target/
 mapreduce/lib/
+hbase/target/
+
+# ── Scratch / typo files ──────────────────────────────────────
+Dockerfile.pigy
 
 # ── Pipeline results (regenerated each run) ──────────────────
 results/
