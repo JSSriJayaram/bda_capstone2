@@ -1,0 +1,21 @@
+# ============================================================
+# Docker Compose for BDA Review 3 (Apache Spark)
+# Usage:
+#   cd review3
+#   docker compose up --build
+# ============================================================
+services:
+  spark-review3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spark-taxi-analytics
+    volumes:
+      # Mount dataset from parent repo without copying 60MB file
+      - ../data/raw:/app/data:ro
+      # Persist generated outputs, charts, and models back to host
+      - ./output:/app/review3/output
+    environment:
+      - SPARK_DRIVER_MEMORY=4g
+    stdin_open: true
+    tty: true

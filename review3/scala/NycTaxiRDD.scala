@@ -30,8 +30,17 @@ println("=" * 70)
 // In production, you'd stay in DataFrame land. Here, we intentionally
 // drop down to RDD to show Spark's foundational abstraction.
 
-val dataDir = "/Users/apple/Documents/sem7/bda/project/review3/data"
-val df = spark.read.parquet(s"$dataDir/yellow_tripdata_2026-01.parquet")
+val candidatePaths = Seq(
+  "data/yellow_tripdata_2026-01.parquet",
+  "review3/data/yellow_tripdata_2026-01.parquet",
+  "../data/raw/yellow_tripdata_2026-01.parquet",
+  "data/raw/yellow_tripdata_2026-01.parquet",
+  "/app/data/yellow_tripdata_2026-01.parquet",
+  "/Users/apple/Documents/sem7/bda/project/review3/data/yellow_tripdata_2026-01.parquet"
+)
+val dataPath = candidatePaths.find(p => new java.io.File(p).exists()).getOrElse("data/yellow_tripdata_2026-01.parquet")
+println(s"Loading dataset from: $dataPath")
+val df = spark.read.parquet(dataPath)
 
 println(s"\n📊 Raw DataFrame loaded: ${df.count()} rows, ${df.columns.length} columns")
 println(s"   Columns: ${df.columns.mkString(", ")}")

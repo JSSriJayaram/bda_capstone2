@@ -116,7 +116,26 @@ services:
         stdin_open: true
         tty: true
 
+    # --------------------------------------------------------
+    # Apache Spark Service — BDA Project Review 3
+    # PySpark, Scala RDD & MLlib Analytics
+    # --------------------------------------------------------
+    spark-review3:
+        build:
+            context: ./review3
+            dockerfile: Dockerfile
+        hostname: spark-review3
+        container_name: taxi-spark-review3
+        volumes:
+            - ./data/raw:/app/data:ro
+            - ./review3/output:/app/review3/output
+        environment:
+            - SPARK_DRIVER_MEMORY=4g
+        stdin_open: true
+        tty: true
+
 volumes:
     taxi_namenode_data:
     taxi_datanode_data:
     hbase_data:
+

@@ -10,15 +10,43 @@ set -e
 
 # Setup PATH for homebrew tools and Python scripts (spark-submit, spark-shell)
 eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null || true
-if [ -d "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home" ]; then
-    export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
-else
-    export JAVA_HOME=$(/usr/libexec/java_home -v 21 2>/dev/null || /usr/libexec/java_home 2>/dev/null)
+
+# Auto-detect JAVA_HOME if not already exported
+if [ -z "$JAVA_HOME" ]; then
+    if [ -d "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home" ]; then
+        export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+    elif command -v /usr/libexec/java_home >/dev/null 2>&1; then
+        export JAVA_HOME=$(/usr/libexec/java_home -v 21 2>/dev/null || /usr/libexec/java_home 2>/dev/null)
+    elif [ -d "/usr/lib/jvm/java-21-openjdk-amd64" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
+    elif [ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+    elif [ -d "/usr/lib/jvm/java-21-openjdk-arm64" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-arm64"
+    elif [ -d "/usr/lib/jvm/java-17-openjdk-arm64" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-arm64"
+    fi
 fi
-export PATH="$JAVA_HOME/bin:/Users/apple/Library/Python/3.9/bin:$PATH"
+
+# Add Java and user Python scripts to PATH
+if [ -n "$JAVA_HOME" ]; then
+    export PATH="$JAVA_HOME/bin:$PATH"
+fi
+export PATH="/Users/apple/Library/Python/3.9/bin:$PATH"
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_DIR"
+
+# Link dataset if present in parent data/raw/
+mkdir -p data
+if [ ! -f "data/yellow_tripdata_2026-01.parquet" ]; then
+    if [ -f "../data/raw/yellow_tripdata_2026-01.parquet" ]; then
+        echo "🔗 Linking dataset from ../data/raw/yellow_tripdata_2026-01.parquet..."
+        ln -sf "../data/raw/yellow_tripdata_2026-01.parquet" data/yellow_tripdata_2026-01.parquet
+    elif [ -f "/app/data/yellow_tripdata_2026-01.parquet" ]; then
+        ln -sf "/app/data/yellow_tripdata_2026-01.parquet" data/yellow_tripdata_2026-01.parquet
+    fi
+fi
 
 echo "============================================================"
 echo "  BDA REVIEW 3 — NYC TAXI ANALYTICS PIPELINE"

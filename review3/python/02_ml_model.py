@@ -59,6 +59,14 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# Candidate paths for cleaned parquet
+candidate_clean = [
+    os.path.join(DATA_DIR, "yellow_taxi_cleaned_for_ml.parquet"),
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "review3", "data", "yellow_taxi_cleaned_for_ml.parquet"),
+    "/app/data/yellow_taxi_cleaned_for_ml.parquet"
+]
+clean_path = next((p for p in candidate_clean if os.path.exists(p)), os.path.join(DATA_DIR, "yellow_taxi_cleaned_for_ml.parquet"))
+
 print("=" * 70)
 print("  NYC TAXI — MACHINE LEARNING PIPELINE")
 print("  Task: Predict High-Fare Trips (Binary Classification)")
@@ -67,10 +75,10 @@ print("=" * 70)
 # ============================================================
 # STEP 1: LOAD CLEANED DATA
 # ============================================================
-clean_path = os.path.join(DATA_DIR, "yellow_taxi_cleaned_for_ml.parquet")
 
 # Check if cleaned data exists; if not, load raw and clean
 if os.path.exists(clean_path):
+    print(f"Loading cleaned data from: {clean_path}")
     df = spark.read.parquet(clean_path)
     print(f"\n📦 Loaded cleaned data: {df.count():,} rows")
 else:
