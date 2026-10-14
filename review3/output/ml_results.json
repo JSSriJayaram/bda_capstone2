@@ -1,0 +1,51 @@
+{
+  "median_fare": 12.8,
+  "models": {
+    "logistic_regression": {
+      "accuracy": 0.9657438056977792,
+      "precision": 0.9673679107947537,
+      "recall": 0.9657438056977792,
+      "f1": 0.9657140719543656,
+      "auc_roc": 0.9945477023759794,
+      "confusion_matrix": {
+        "tp": 234352,
+        "tn": 249081,
+        "fp": 1197,
+        "fn": 15951
+      }
+    },
+    "random_forest": {
+      "accuracy": 0.9796176842509005,
+      "precision": 0.979624402337595,
+      "recall": 0.9796176842509005,
+      "f1": 0.9796176109311346,
+      "auc_roc": 0.9973357267697457,
+      "confusion_matrix": {
+        "tp": 245670,
+        "tn": 244708,
+        "fp": 5570,
+        "fn": 4633
+      }
+    }
+  },
+  "feature_importance": {
+    "trip_duration_min": 0.6950590379508538,
+    "trip_distance": 0.24490517592219962,
+    "avg_speed_mph": 0.051314924523842884,
+    "PULocationID": 0.007431858043773874,
+    "pickup_hour": 0.0006414460651702993,
+    "is_weekend": 0.00033346071773656603,
+    "pickup_dayofweek": 0.00023575815756699187,
+    "passenger_count": 7.833861885595268e-05
+  },
+  "feature_columns": [
+    "trip_distance",
+    "pickup_hour",
+    "pickup_dayofweek",
+    "passenger_count",
+    "PULocationID",
+    "trip_duration_min",
+    "is_weekend",
+    "avg_speed_mph"
+  ]
+}

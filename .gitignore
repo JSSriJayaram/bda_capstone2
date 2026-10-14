@@ -44,3 +44,8 @@ scripts/local_mode/hive/hiveserver2.log
 scripts/local_mode/hive/hiveserver2.pid
 scripts/local_mode/hive/hs2*.log
 scripts/local_mode/local-conf/
+
+# ── Review 3 (Spark & PySpark) ────────────────────────────────
+review3/data/
+*.parquet
+review3/__pycache__/
