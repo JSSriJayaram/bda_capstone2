@@ -23,6 +23,12 @@ from pyspark.sql.functions import (
     sum as spark_sum, desc, lit
 )
 import os
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
 
 # ============================================================
 # INITIALIZE SPARK
@@ -277,6 +283,124 @@ payment_df = df_clean.groupBy("payment_type").agg(
 payment_df.toPandas().to_csv(os.path.join(OUTPUT_DIR, "payment_tip_stats.csv"), index=False)
 
 print("   ✅ Saved: hourly_demand.csv, zone_stats.csv, payment_tip_stats.csv")
+
+# ============================================================
+# STEP 5: GENERATE COMPREHENSIVE EDA VISUALIZATIONS FOR ML
+# ============================================================
+print("\n" + "=" * 70)
+print("  STEP 5: GENERATING EDA VISUALIZATIONS & ML FEASIBILITY PLOTS")
+print("=" * 70)
+
+# Extract a representative 50k sample for fast and smooth matplotlib/seaborn rendering
+print("📊 Sampling 50,000 clean records for statistical EDA visualizations...")
+eda_sample = df_clean.select(
+    "trip_distance", "trip_duration_min", "fare_amount", "tip_amount", 
+    "total_amount", "avg_speed_mph", "fare_per_mile", "pickup_hour", "is_weekend"
+).sample(withReplacement=False, fraction=0.025, seed=42).limit(50000).toPandas()
+
+# 1. Feature Correlation Heatmap
+print("📊 Generating: eda_correlation_matrix.png...")
+plt.figure(figsize=(9, 7))
+corr = eda_sample.corr()
+mask = np.triu(np.ones_like(corr, dtype=bool))
+sns.heatmap(corr, mask=mask, annot=True, fmt=".2f", cmap='Blues', vmin=-0.2, vmax=1.0, square=True)
+plt.title("EDA: Feature Correlation Matrix (Informing Feature Selection for ML)", fontsize=13, fontweight='bold', pad=12)
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_DIR, "eda_correlation_matrix.png"), dpi=200)
+plt.close()
+
+# 2. Skewness and Feature Distributions
+print("📊 Generating: eda_feature_distributions.png...")
+fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+sns.histplot(eda_sample['fare_amount'], kde=True, ax=axes[0, 0], color='#0ea5e9', bins=40)
+axes[0, 0].set_title("Fare Amount Distribution (Right Skewed)", fontweight='bold')
+axes[0, 0].set_xlabel("Fare ($)")
+
+sns.histplot(eda_sample['trip_distance'], kde=True, ax=axes[0, 1], color='#10b981', bins=40)
+axes[0, 1].set_title("Trip Distance Distribution (Right Skewed)", fontweight='bold')
+axes[0, 1].set_xlabel("Distance (miles)")
+
+sns.histplot(eda_sample['trip_duration_min'], kde=True, ax=axes[1, 0], color='#f59e0b', bins=40)
+axes[1, 0].set_title("Trip Duration Distribution", fontweight='bold')
+axes[1, 0].set_xlabel("Duration (minutes)")
+
+sns.histplot(eda_sample['avg_speed_mph'], kde=True, ax=axes[1, 1], color='#8b5cf6', bins=40)
+axes[1, 1].set_title("Average Speed Distribution (Traffic Velocity)", fontweight='bold')
+axes[1, 1].set_xlabel("Speed (mph)")
+
+plt.suptitle("EDA: Feature Skewness & Value Distributions (Justifying Scaling & Ensemble ML)", fontsize=14, fontweight='bold', y=0.99)
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_DIR, "eda_feature_distributions.png"), dpi=200)
+plt.close()
+
+# 3. Distance vs Fare Relationship (Hexbin & Non-linearities)
+print("📊 Generating: eda_distance_vs_fare.png...")
+plt.figure(figsize=(10, 6))
+plt.hexbin(eda_sample['trip_distance'], eda_sample['fare_amount'], gridsize=50, cmap='YlOrRd', mincnt=1, bins='log')
+cb = plt.colorbar(label='Log10(Trip Density)')
+plt.title("EDA: Distance vs Fare Relationship (Revealing Linear Meter + Flat Airport Rates)", fontsize=13, fontweight='bold', pad=12)
+plt.xlabel("Trip Distance (miles)")
+plt.ylabel("Fare Amount ($)")
+plt.axhline(70.0, color='blue', linestyle='--', linewidth=1.8, label='JFK Flat Rate Rule ($70)')
+plt.legend(loc='upper left')
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_DIR, "eda_distance_vs_fare.png"), dpi=200)
+plt.close()
+
+# 4. Outlier Detection Boxplots (Sanity Checks)
+print("📊 Generating: eda_outlier_boxplots.png...")
+fig, axes = plt.subplots(1, 3, figsize=(14, 5))
+sns.boxplot(y=eda_sample['fare_amount'], ax=axes[0], color='#0ea5e9')
+axes[0].set_title("Cleaned Fare Amount ($)", fontweight='bold')
+
+sns.boxplot(y=eda_sample['trip_distance'], ax=axes[1], color='#10b981')
+axes[1].set_title("Cleaned Distance (miles)", fontweight='bold')
+
+sns.boxplot(y=eda_sample['trip_duration_min'], ax=axes[2], color='#f43f5e')
+axes[2].set_title("Cleaned Duration (minutes)", fontweight='bold')
+
+plt.suptitle("EDA: Outlier Boundaries Verification (Post-Preprocessing Boxplots)", fontsize=14, fontweight='bold')
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_DIR, "eda_outlier_boxplots.png"), dpi=200)
+plt.close()
+
+# 5. Master EDA Visual Summary Dashboard
+print("📊 Generating: eda_summary_dashboard.png...")
+fig = plt.figure(figsize=(16, 11))
+gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.25)
+
+ax1 = fig.add_subplot(gs[0, 0])
+key_cols = ['fare_amount', 'trip_duration_min', 'trip_distance']
+sns.heatmap(corr[key_cols].loc[key_cols], annot=True, fmt=".2f", cmap='Blues', ax=ax1, cbar=False)
+ax1.set_title("A. Key Feature Correlations to Fare", fontweight='bold')
+
+ax2 = fig.add_subplot(gs[0, 1])
+sns.histplot(eda_sample['fare_amount'], kde=True, ax=ax2, color='#0ea5e9', bins=35)
+ax2.axvline(15.0, color='red', linestyle='--', linewidth=2, label='Classification Split ($15)')
+ax2.set_title("B. Target Fare Distribution & Class Split", fontweight='bold')
+ax2.legend()
+
+ax3 = fig.add_subplot(gs[1, 0])
+ax3.hexbin(eda_sample['trip_distance'], eda_sample['fare_amount'], gridsize=40, cmap='inferno', mincnt=1, bins='log')
+ax3.set_title("C. Distance vs Fare Density (Linear + Non-Linear)", fontweight='bold')
+ax3.set_xlabel("Distance (miles)")
+ax3.set_ylabel("Fare ($)")
+
+ax4 = fig.add_subplot(gs[1, 1])
+class_counts = [len(eda_sample[eda_sample['fare_amount'] < 15.0]), len(eda_sample[eda_sample['fare_amount'] >= 15.0])]
+ax4.bar(['Standard (<$15)', 'High-Value (≥$15)'], class_counts, color=['#0ea5e9', '#10b981'], width=0.5)
+ax4.set_title("D. ML Classification Class Balance", fontweight='bold')
+ax4.set_ylabel("Trips in Sample")
+for i, v in enumerate(class_counts):
+    pct = (v / len(eda_sample)) * 100
+    ax4.text(i, v + 200, f"{v:,} ({pct:.1f}%)", ha='center', fontweight='bold')
+
+plt.suptitle("NYC TAXI EXPLORATORY DATA ANALYSIS (EDA) & ML READINESS DASHBOARD", fontsize=15, fontweight='bold', y=0.98)
+plt.savefig(os.path.join(OUTPUT_DIR, "eda_summary_dashboard.png"), dpi=200, bbox_inches='tight')
+plt.close()
+
+print("   ✅ Generated: eda_correlation_matrix.png, eda_feature_distributions.png, eda_distance_vs_fare.png, eda_outlier_boxplots.png, eda_summary_dashboard.png")
+
 
 # ============================================================
 # SUMMARY
