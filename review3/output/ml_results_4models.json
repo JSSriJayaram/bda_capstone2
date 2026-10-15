@@ -1,0 +1,75 @@
+{
+  "threshold_high_fare": 15.0,
+  "feature_columns": [
+    "trip_distance",
+    "trip_duration_min",
+    "pickup_hour",
+    "pickup_dayofweek",
+    "passenger_count",
+    "PULocationID",
+    "avg_speed_mph",
+    "is_weekend"
+  ],
+  "regression": {
+    "linear_regression": {
+      "rmse": 6.6406195994413455,
+      "r2": 0.8668219856665149,
+      "mae": 2.8328383130715147,
+      "training_time_sec": 2.8
+    },
+    "random_forest_regressor": {
+      "rmse": 5.885385325991325,
+      "r2": 0.8953919434255517,
+      "mae": 1.730402277974764,
+      "training_time_sec": 8.2
+    }
+  },
+  "classification": {
+    "logistic_regression": {
+      "accuracy": 0.9082788562303508,
+      "precision": 0.9204488255817446,
+      "recall": 0.9082788562303508,
+      "f1": 0.9058696052347863,
+      "auc_roc": 0.9922285699302942,
+      "tp": 32093,
+      "tn": 58912,
+      "fp": 31,
+      "fn": 9159,
+      "training_time_sec": 2.06
+    },
+    "random_forest_classifier": {
+      "accuracy": 0.9805579120714607,
+      "precision": 0.9805572318042104,
+      "recall": 0.9805579120714607,
+      "f1": 0.9805453473479392,
+      "auc_roc": 0.9968164495009445,
+      "tp": 40104,
+      "tn": 58143,
+      "fp": 800,
+      "fn": 1148,
+      "training_time_sec": 6.68
+    }
+  },
+  "feature_importances": {
+    "regression": {
+      "trip_distance": 0.40519297886069827,
+      "trip_duration_min": 0.3828321757809128,
+      "pickup_hour": 0.0034849479936986346,
+      "pickup_dayofweek": 0.000858032524835463,
+      "passenger_count": 0.0028384859493948466,
+      "PULocationID": 0.044595293187831876,
+      "avg_speed_mph": 0.15994576538016,
+      "is_weekend": 0.0002523203224681132
+    },
+    "classification": {
+      "trip_distance": 0.30414233367647087,
+      "trip_duration_min": 0.6131698724540261,
+      "pickup_hour": 0.0012749505221991487,
+      "pickup_dayofweek": 0.00040968675419432617,
+      "passenger_count": 0.00014770461420176716,
+      "PULocationID": 0.014882809588560234,
+      "avg_speed_mph": 0.0656871704852173,
+      "is_weekend": 0.0002854719051302629
+    }
+  }
+}

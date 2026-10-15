@@ -1,54 +1,56 @@
 """
 02_ml_model.py
-BDA Review 3 — PySpark Machine Learning Pipeline
+BDA Review 3 — Machine Learning Pipeline (4 Models)
 NYC Yellow Taxi Trip Data (Jan 2026)
 
-PROBLEM: Predict whether a taxi trip will be a "high-fare" trip
-         (fare above the median) based on pickup features.
+============================================================
+THE 4 MODELS & BUSINESS PROBLEMS:
+============================================================
 
-WHY THIS IS USEFUL:
-    Taxi dispatchers can match drivers to high-value trips.
-    Drivers can decide which trip requests to prioritize.
-    City planners can understand fare-driving factors.
+1. REGRESSION (Continuous Value Prediction):
+   Business Problem: Dynamic Upfront Fare Estimation & Revenue Forecasting
+   - Problem: Passengers demand transparent, guaranteed upfront pricing before booking.
+     Operators must quote accurate prices without undercharging drivers or overcharging riders.
+   - Target: fare_amount (Continuous USD)
+   - Model 1: Linear Regression (with ElasticNet regularization) — Baseline linear model
+   - Model 2: Random Forest Regressor — Ensemble non-linear model capturing flat-rate
+     airport trips ($70 JFK), step-function surcharges, and congestion bottlenecks.
 
-WHY PySpark (not Scala) FOR ML?
-    MLlib's Pipeline API (VectorAssembler → Scaler → Model → Evaluator)
-    is designed around DataFrames. Python's API mirrors scikit-learn,
-    which is the industry standard. Scala has no equivalent ecosystem
-    for model evaluation and visualization.
-
-TWO MODELS COMPARED:
-    1. Logistic Regression — Baseline (simple, interpretable, fast)
-    2. Random Forest       — Ensemble  (handles non-linearity, feature importance)
-
-    If LR ≈ RF → use LR (Occam's razor, simpler is better)
-    If RF >> LR → non-linear patterns exist, justify the complexity
+2. CLASSIFICATION (Binary Categorization):
+   Business Problem: High-Value Ride Dispatch & Driver Retention Optimization
+   - Problem: Cruising for fares wastes 35% of driver fuel and time. Dispatch systems
+     need to classify trip requests as High-Value (Fare >= $15) to match with drivers strategically.
+   - Target: is_high_fare (Binary 0 or 1)
+   - Model 3: Logistic Regression Classifier — Probabilistic baseline with sigmoid activation
+   - Model 4: Random Forest Classifier — Multi-tree ensemble capturing spatial-temporal boundaries.
 
 HOW TO RUN:
-    spark-submit 02_ml_model.py
+    python3 python/02_ml_model.py
+    OR: spark-submit --driver-memory 4g python/02_ml_model.py
 """
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, when, count, mean, percentile_approx,
-    round as spark_round
+    col, when, count, mean, round as spark_round
 )
-from pyspark.ml.feature import VectorAssembler, StandardScaler, StringIndexer
+from pyspark.ml.feature import VectorAssembler, StandardScaler
+from pyspark.ml.regression import LinearRegression, RandomForestRegressor
 from pyspark.ml.classification import LogisticRegression, RandomForestClassifier
 from pyspark.ml.evaluation import (
+    RegressionEvaluator,
     BinaryClassificationEvaluator,
     MulticlassClassificationEvaluator
 )
 from pyspark.ml import Pipeline
-from pyspark.ml.tuning import ParamGridBuilder, CrossValidator
 import os
 import json
+import time
 
 # ============================================================
 # INITIALIZE SPARK
 # ============================================================
 spark = SparkSession.builder \
-    .appName("NYC Taxi ML - BDA Review 3") \
+    .appName("NYC Taxi 4-Model ML Pipeline - BDA Review 3") \
     .config("spark.sql.shuffle.partitions", "8") \
     .config("spark.driver.memory", "4g") \
     .getOrCreate()
@@ -67,394 +69,300 @@ candidate_clean = [
 ]
 clean_path = next((p for p in candidate_clean if os.path.exists(p)), os.path.join(DATA_DIR, "yellow_taxi_cleaned_for_ml.parquet"))
 
-print("=" * 70)
-print("  NYC TAXI — MACHINE LEARNING PIPELINE")
-print("  Task: Predict High-Fare Trips (Binary Classification)")
-print("=" * 70)
+print("=" * 80)
+print("  BDA REVIEW 3 — MACHINE LEARNING PIPELINE (4 MODELS)")
+print("  Models: 2 Regression + 2 Classification")
+print("=" * 80)
 
 # ============================================================
 # STEP 1: LOAD CLEANED DATA
 # ============================================================
-
-# Check if cleaned data exists; if not, load raw and clean
 if os.path.exists(clean_path):
-    print(f"Loading cleaned data from: {clean_path}")
+    print(f"\n📦 Loading cleaned dataset from: {clean_path}")
     df = spark.read.parquet(clean_path)
-    print(f"\n📦 Loaded cleaned data: {df.count():,} rows")
 else:
-    print("\n⚠️  Cleaned data not found. Run 01_preprocessing_eda.py first!")
-    print("   Loading raw data and applying quick clean...")
+    print("\n⚠️ Cleaned data not found. Creating cleaned dataset from raw data...")
     from pyspark.sql.functions import hour, dayofweek, unix_timestamp
-    raw = spark.read.parquet(os.path.join(DATA_DIR, "yellow_tripdata_2026-01.parquet"))
+    raw_path = os.path.join(DATA_DIR, "yellow_tripdata_2026-01.parquet")
+    raw = spark.read.parquet(raw_path)
     df = raw.withColumn("trip_duration_min",
-            (unix_timestamp("tpep_dropoff_datetime") -
-             unix_timestamp("tpep_pickup_datetime")) / 60.0) \
+            (unix_timestamp("tpep_dropoff_datetime") - unix_timestamp("tpep_pickup_datetime")) / 60.0) \
         .withColumn("pickup_hour", hour("tpep_pickup_datetime")) \
         .withColumn("pickup_dayofweek", dayofweek("tpep_pickup_datetime")) \
-        .withColumn("is_weekend",
-            when(dayofweek("tpep_pickup_datetime").isin(1, 7), 1).otherwise(0)) \
+        .withColumn("is_weekend", when(dayofweek("tpep_pickup_datetime").isin(1, 7), 1).otherwise(0)) \
         .withColumn("avg_speed_mph",
-            when(col("trip_duration_min") > 0,
-                col("trip_distance") / (col("trip_duration_min") / 60.0)).otherwise(0.0)) \
-        .withColumn("fare_per_mile",
-            when(col("trip_distance") > 0.1,
-                col("fare_amount") / col("trip_distance")).otherwise(0.0)) \
+            when(col("trip_duration_min") > 0, col("trip_distance") / (col("trip_duration_min") / 60.0)).otherwise(0.0)) \
         .filter(
             (col("fare_amount") > 0) & (col("fare_amount") < 500) &
             (col("trip_distance") > 0) & (col("trip_distance") < 100) &
             (col("passenger_count") > 0) & (col("trip_duration_min") > 0) &
-            (col("trip_duration_min") < 180) & (col("total_amount") > 0) &
-            (col("avg_speed_mph") < 80)
+            (col("trip_duration_min") < 180) & (col("avg_speed_mph") < 80)
         )
-    print(f"   Quick cleaned: {df.count():,} rows")
+
+total_rows = df.count()
+print(f"   Available Clean Trips: {total_rows:,} rows")
 
 # ============================================================
-# STEP 2: CREATE TARGET VARIABLE
+# STEP 2: PREPARE TARGET VARIABLES & FEATURES
 # ============================================================
-print("\n" + "=" * 70)
-print("  STEP 2: TARGET VARIABLE CREATION")
-print("=" * 70)
-
-# Calculate median fare
-median_fare = df.select(percentile_approx("fare_amount", 0.5)).collect()[0][0]
-print(f"\n   Median fare amount: ${median_fare:.2f}")
-print(f"   Label 1 (high_fare): fare > ${median_fare:.2f}")
-print(f"   Label 0 (normal_fare): fare <= ${median_fare:.2f}")
-
-# Create binary label
-df = df.withColumn("label",
-    when(col("fare_amount") > median_fare, 1.0).otherwise(0.0)
-)
-
-# Check class balance
-print("\n📊 Class Distribution:")
-class_dist = df.groupBy("label").count().collect()
-for row in class_dist:
-    label_name = "High Fare" if row["label"] == 1.0 else "Normal Fare"
-    pct = (row["count"] / df.count()) * 100
-    print(f"   {label_name:12s} (label={int(row['label'])}): {row['count']:>10,} ({pct:.1f}%)")
-
-# ============================================================
-# STEP 3: FEATURE PREPARATION
-# ============================================================
-print("\n" + "=" * 70)
-print("  STEP 3: FEATURE PREPARATION")
-print("=" * 70)
-
-# Select features for ML
-# WHY THESE FEATURES:
-#   trip_distance    → Direct fare driver (meter-based pricing)
-#   pickup_hour      → Time-of-day affects congestion surcharge
-#   pickup_dayofweek → Weekend vs weekday patterns
-#   passenger_count  → Group trips may go further
-#   PULocationID     → Airport trips (JFK=132) have flat high fares
-#   trip_duration_min → Longer rides = higher meter reading
-#   is_weekend       → Weekend recreational trips are often longer
+# Target 1 (Regression): fare_amount (Continuous USD)
+# Target 2 (Classification): is_high_fare (Binary: 1 if fare >= $15.00, else 0)
+THRESHOLD_FARE = 15.0
+df_ml = df.withColumn("fare_target", col("fare_amount").cast("double")) \
+          .withColumn("high_fare_label", when(col("fare_amount") >= THRESHOLD_FARE, 1.0).otherwise(0.0))
 
 feature_cols = [
     "trip_distance",
+    "trip_duration_min",
     "pickup_hour",
     "pickup_dayofweek",
     "passenger_count",
     "PULocationID",
-    "trip_duration_min",
+    "avg_speed_mph",
+    "is_weekend"
 ]
 
-# Add is_weekend and avg_speed_mph if they exist
-for extra_col in ["is_weekend", "avg_speed_mph"]:
-    if extra_col in df.columns:
-        feature_cols.append(extra_col)
+# Ensure valid data
+df_prepared = df_ml.select(feature_cols + ["fare_target", "high_fare_label"]).dropna()
 
-print(f"\n   Features selected ({len(feature_cols)}):")
-for i, feat in enumerate(feature_cols, 1):
-    print(f"   {i}. {feat}")
+# Stratified sampling for responsive training (500k records provides optimal statistical significance)
+sample_size = min(total_rows, 500000)
+if total_rows > sample_size:
+    sample_fraction = float(sample_size) / total_rows
+    df_sampled = df_prepared.sample(withReplacement=False, fraction=sample_fraction, seed=42)
+else:
+    df_sampled = df_prepared
 
-# Drop any rows with nulls in feature columns or label
-df_ml = df.select(feature_cols + ["label"]).dropna()
-print(f"\n   ML-ready rows: {df_ml.count():,}")
+train_df, test_df = df_sampled.randomSplit([0.8, 0.2], seed=42)
+train_count = train_df.count()
+test_count = test_df.count()
 
-# ============================================================
-# STEP 4: BUILD ML PIPELINE
-# ============================================================
-print("\n" + "=" * 70)
-print("  STEP 4: ML PIPELINE CONSTRUCTION")
-print("=" * 70)
+print(f"\n📊 Training Set: {train_count:,} records (80%)")
+print(f"📊 Testing Set:  {test_count:,} records (20%)")
 
-# Stage 1: Assemble features into a single vector
-# WHY VectorAssembler: MLlib models require a single "features" column
-# containing a dense/sparse vector. VectorAssembler merges multiple
-# columns into one vector column.
-assembler = VectorAssembler(
-    inputCols=feature_cols,
-    outputCol="raw_features",
-    handleInvalid="skip"
-)
-
-# Stage 2: Scale features
-# WHY StandardScaler: Logistic Regression is sensitive to feature scales.
-# trip_distance (0-30) and PULocationID (1-265) are on different scales.
-# Scaling normalizes them so no single feature dominates.
-scaler = StandardScaler(
-    inputCol="raw_features",
-    outputCol="features",
-    withStd=True,
-    withMean=False  # Sparse vectors don't support mean subtraction
-)
-
-print("""
-   Pipeline Stages:
-   ┌──────────────────────────────────────────────┐
-   │  1. VectorAssembler                          │
-   │     Merges feature columns → "raw_features"  │
-   ├──────────────────────────────────────────────┤
-   │  2. StandardScaler                           │
-   │     Normalizes "raw_features" → "features"   │
-   ├──────────────────────────────────────────────┤
-   │  3. ML Model                                 │
-   │     Logistic Regression OR Random Forest      │
-   └──────────────────────────────────────────────┘
-""")
+# VectorAssembler & StandardScaler pipeline stages
+assembler = VectorAssembler(inputCols=feature_cols, outputCol="raw_features", handleInvalid="skip")
+scaler = StandardScaler(inputCol="raw_features", outputCol="features", withStd=True, withMean=False)
 
 # ============================================================
-# STEP 5: TRAIN/TEST SPLIT
+# REGRESSION MODELS (Upfront Fare Amount Prediction)
 # ============================================================
-print("=" * 70)
-print("  STEP 5: TRAIN/TEST SPLIT")
-print("=" * 70)
+print("\n" + "=" * 80)
+print("  PART 1: REGRESSION MODELS (Upfront Fare Amount Estimation)")
+print("  Problem: Predict continuous fare_amount ($) for upfront ride quoting")
+print("=" * 80)
 
-train, test = df_ml.randomSplit([0.8, 0.2], seed=42)
-print(f"\n   Training set: {train.count():>10,} rows (80%)")
-print(f"   Testing set:  {test.count():>10,} rows (20%)")
-print(f"   Random seed:  42 (for reproducibility)")
-
-# ============================================================
-# STEP 6: TRAIN MODELS
-# ============================================================
-print("\n" + "=" * 70)
-print("  STEP 6: MODEL TRAINING")
-print("=" * 70)
-
-# --- Model 1: Logistic Regression ---
-# WHY LR: Baseline model. Simple, fast, interpretable.
-# If it works well enough, no need for complex models.
-print("\n📊 Training Model 1: Logistic Regression...")
-print("   WHY: Baseline — simple, fast, interpretable")
-print("   Config: maxIter=10, regParam=0.01, elasticNet=0.8")
-
-lr = LogisticRegression(
+# --- Model 1: Linear Regression ---
+print("\n📈 [Model 1/4] Training Linear Regression...")
+t0 = time.time()
+lr_reg = LinearRegression(
     featuresCol="features",
-    labelCol="label",
-    maxIter=10,
-    regParam=0.01,
-    elasticNetParam=0.8  # L1/L2 mix (0.8 = more L1 for sparsity)
+    labelCol="fare_target",
+    maxIter=20,
+    regParam=0.1,
+    elasticNetParam=0.5
 )
-lr_pipeline = Pipeline(stages=[assembler, scaler, lr])
-lr_model = lr_pipeline.fit(train)
-lr_predictions = lr_model.transform(test)
-print("   ✅ Logistic Regression trained!")
+lr_reg_pipeline = Pipeline(stages=[assembler, scaler, lr_reg])
+lr_reg_model = lr_reg_pipeline.fit(train_df)
+lr_reg_preds = lr_reg_model.transform(test_df)
+t_lr_reg = time.time() - t0
+print(f"   ✅ Linear Regression trained in {t_lr_reg:.2f}s")
 
-# --- Model 2: Random Forest ---
-# WHY RF: Handles non-linear relationships.
-# JFK airport has flat $70 fares regardless of distance.
-# Rush hour congestion surcharges create step-function patterns.
-# LR can't model these — RF's decision trees can.
-print("\n📊 Training Model 2: Random Forest...")
-print("   WHY: Handles non-linear patterns (JFK flat fares, congestion thresholds)")
-print("   Config: numTrees=50, maxDepth=8")
-
-rf = RandomForestClassifier(
+# --- Model 2: Random Forest Regressor ---
+print("\n🌲 [Model 2/4] Training Random Forest Regressor...")
+t0 = time.time()
+rf_reg = RandomForestRegressor(
     featuresCol="features",
-    labelCol="label",
-    numTrees=50,
+    labelCol="fare_target",
+    numTrees=40,
     maxDepth=8,
     seed=42
 )
-rf_pipeline = Pipeline(stages=[assembler, scaler, rf])
-rf_model = rf_pipeline.fit(train)
-rf_predictions = rf_model.transform(test)
-print("   ✅ Random Forest trained!")
+rf_reg_pipeline = Pipeline(stages=[assembler, scaler, rf_reg])
+rf_reg_model = rf_reg_pipeline.fit(train_df)
+rf_reg_preds = rf_reg_model.transform(test_df)
+t_rf_reg = time.time() - t0
+print(f"   ✅ Random Forest Regressor trained in {t_rf_reg:.2f}s")
 
-# ============================================================
-# STEP 7: MODEL EVALUATION
-# ============================================================
-print("\n" + "=" * 70)
-print("  STEP 7: MODEL EVALUATION")
-print("=" * 70)
+# Evaluate Regression Models
+eval_rmse = RegressionEvaluator(labelCol="fare_target", predictionCol="prediction", metricName="rmse")
+eval_r2 = RegressionEvaluator(labelCol="fare_target", predictionCol="prediction", metricName="r2")
+eval_mae = RegressionEvaluator(labelCol="fare_target", predictionCol="prediction", metricName="mae")
 
-def evaluate_model(predictions, model_name):
-    """Evaluate a model and return metrics dictionary."""
-    binary_eval = BinaryClassificationEvaluator(
-        labelCol="label", rawPredictionCol="rawPrediction"
-    )
-    multi_eval = MulticlassClassificationEvaluator(labelCol="label")
-
-    metrics = {}
-
-    # AUC-ROC
-    metrics["auc_roc"] = binary_eval.evaluate(
-        predictions, {binary_eval.metricName: "areaUnderROC"}
-    )
-
-    # Accuracy, Precision, Recall, F1
-    for metric_name in ["accuracy", "f1", "weightedPrecision", "weightedRecall"]:
-        multi_eval.setMetricName(metric_name)
-        metrics[metric_name] = multi_eval.evaluate(predictions)
-
-    # Print results
-    print(f"\n   {'─' * 45}")
-    print(f"   📊 {model_name}")
-    print(f"   {'─' * 45}")
-    print(f"   Accuracy:           {metrics['accuracy']:.4f}  ({metrics['accuracy']*100:.1f}%)")
-    print(f"   Precision (weighted): {metrics['weightedPrecision']:.4f}")
-    print(f"   Recall (weighted):    {metrics['weightedRecall']:.4f}")
-    print(f"   F1-Score:           {metrics['f1']:.4f}")
-    print(f"   AUC-ROC:            {metrics['auc_roc']:.4f}")
-    print(f"   {'─' * 45}")
-
-    # Confusion matrix
-    print(f"\n   Confusion Matrix ({model_name}):")
-    cm = predictions.groupBy("label", "prediction").count() \
-        .orderBy("label", "prediction").collect()
-
-    tp = sum(r["count"] for r in cm if r["label"] == 1.0 and r["prediction"] == 1.0)
-    tn = sum(r["count"] for r in cm if r["label"] == 0.0 and r["prediction"] == 0.0)
-    fp = sum(r["count"] for r in cm if r["label"] == 0.0 and r["prediction"] == 1.0)
-    fn = sum(r["count"] for r in cm if r["label"] == 1.0 and r["prediction"] == 0.0)
-
-    print(f"                    Predicted")
-    print(f"                  Normal  High")
-    print(f"   Actual Normal │ {tn:>7,} │ {fp:>7,} │")
-    print(f"   Actual High   │ {fn:>7,} │ {tp:>7,} │")
-
-    metrics["tp"] = tp
-    metrics["tn"] = tn
-    metrics["fp"] = fp
-    metrics["fn"] = fn
-
-    return metrics
-
-# Evaluate both models
-lr_metrics = evaluate_model(lr_predictions, "Logistic Regression")
-rf_metrics = evaluate_model(rf_predictions, "Random Forest")
-
-# ============================================================
-# STEP 8: MODEL COMPARISON
-# ============================================================
-print("\n" + "=" * 70)
-print("  STEP 8: MODEL COMPARISON")
-print("=" * 70)
-
-print(f"""
-   ┌────────────────────┬──────────────────┬──────────────────┬────────┐
-   │ Metric             │ Logistic Reg.    │ Random Forest    │ Winner │
-   ├────────────────────┼──────────────────┼──────────────────┼────────┤
-   │ Accuracy           │ {lr_metrics['accuracy']:.4f}           │ {rf_metrics['accuracy']:.4f}           │ {'RF ✅' if rf_metrics['accuracy'] > lr_metrics['accuracy'] else 'LR ✅'} │
-   │ Precision          │ {lr_metrics['weightedPrecision']:.4f}           │ {rf_metrics['weightedPrecision']:.4f}           │ {'RF ✅' if rf_metrics['weightedPrecision'] > lr_metrics['weightedPrecision'] else 'LR ✅'} │
-   │ Recall             │ {lr_metrics['weightedRecall']:.4f}           │ {rf_metrics['weightedRecall']:.4f}           │ {'RF ✅' if rf_metrics['weightedRecall'] > lr_metrics['weightedRecall'] else 'LR ✅'} │
-   │ F1-Score           │ {lr_metrics['f1']:.4f}           │ {rf_metrics['f1']:.4f}           │ {'RF ✅' if rf_metrics['f1'] > lr_metrics['f1'] else 'LR ✅'} │
-   │ AUC-ROC            │ {lr_metrics['auc_roc']:.4f}           │ {rf_metrics['auc_roc']:.4f}           │ {'RF ✅' if rf_metrics['auc_roc'] > lr_metrics['auc_roc'] else 'LR ✅'} │
-   └────────────────────┴──────────────────┴──────────────────┴────────┘
-""")
-
-# ============================================================
-# FEATURE IMPORTANCE (from Random Forest)
-# ============================================================
-print("=" * 70)
-print("  FEATURE IMPORTANCE (Random Forest)")
-print("=" * 70)
-
-rf_stage = rf_model.stages[-1]  # Last stage is the RF model
-importances = list(zip(feature_cols, rf_stage.featureImportances.toArray()))
-importances.sort(key=lambda x: -x[1])
-
-print("\n   Feature importance tells us WHICH features drive the prediction:")
-print(f"   {'─' * 55}")
-for feat, imp in importances:
-    bar = "█" * int(imp * 100)
-    print(f"   {feat:25s} │ {imp:.4f} │ {bar}")
-print(f"   {'─' * 55}")
-
-# ============================================================
-# SAVE RESULTS FOR VISUALIZATION
-# ============================================================
-print("\n💾 Saving evaluation results...")
-
-results = {
-    "median_fare": median_fare,
-    "models": {
-        "logistic_regression": {
-            "accuracy": lr_metrics["accuracy"],
-            "precision": lr_metrics["weightedPrecision"],
-            "recall": lr_metrics["weightedRecall"],
-            "f1": lr_metrics["f1"],
-            "auc_roc": lr_metrics["auc_roc"],
-            "confusion_matrix": {
-                "tp": lr_metrics["tp"], "tn": lr_metrics["tn"],
-                "fp": lr_metrics["fp"], "fn": lr_metrics["fn"]
-            }
-        },
-        "random_forest": {
-            "accuracy": rf_metrics["accuracy"],
-            "precision": rf_metrics["weightedPrecision"],
-            "recall": rf_metrics["weightedRecall"],
-            "f1": rf_metrics["f1"],
-            "auc_roc": rf_metrics["auc_roc"],
-            "confusion_matrix": {
-                "tp": rf_metrics["tp"], "tn": rf_metrics["tn"],
-                "fp": rf_metrics["fp"], "fn": rf_metrics["fn"]
-            }
-        }
+reg_results = {
+    "linear_regression": {
+        "rmse": float(eval_rmse.evaluate(lr_reg_preds)),
+        "r2": float(eval_r2.evaluate(lr_reg_preds)),
+        "mae": float(eval_mae.evaluate(lr_reg_preds)),
+        "training_time_sec": round(t_lr_reg, 2)
     },
-    "feature_importance": {feat: float(imp) for feat, imp in importances},
-    "feature_columns": feature_cols
+    "random_forest_regressor": {
+        "rmse": float(eval_rmse.evaluate(rf_reg_preds)),
+        "r2": float(eval_r2.evaluate(rf_reg_preds)),
+        "mae": float(eval_mae.evaluate(rf_reg_preds)),
+        "training_time_sec": round(t_rf_reg, 2)
+    }
 }
 
-with open(os.path.join(OUTPUT_DIR, "ml_results.json"), "w") as f:
-    json.dump(results, f, indent=2)
-print(f"   ✅ Saved → {os.path.join(OUTPUT_DIR, 'ml_results.json')}")
-
-# Save predictions for confusion matrix visualization
-print("   Saving sample predictions...")
-lr_sample = lr_predictions.select("label", "prediction", "probability") \
-    .limit(10000).toPandas()
-lr_sample.to_csv(os.path.join(OUTPUT_DIR, "lr_predictions.csv"), index=False)
-
-rf_sample = rf_predictions.select("label", "prediction", "probability") \
-    .limit(10000).toPandas()
-rf_sample.to_csv(os.path.join(OUTPUT_DIR, "rf_predictions.csv"), index=False)
+print("\n📊 REGRESSION EVALUATION RESULTS:")
+print("   " + "─" * 60)
+print(f"   {'Metric':<15} | {'Linear Regression':<20} | {'Random Forest Regressor':<20}")
+print("   " + "─" * 60)
+print(f"   {'R² Score':<15} | {reg_results['linear_regression']['r2']:<20.4f} | {reg_results['random_forest_regressor']['r2']:<20.4f}")
+print(f"   {'RMSE ($)':<15} | ${reg_results['linear_regression']['rmse']:<19.2f} | ${reg_results['random_forest_regressor']['rmse']:<19.2f}")
+print(f"   {'MAE ($)':<15}  | ${reg_results['linear_regression']['mae']:<19.2f} | ${reg_results['random_forest_regressor']['mae']:<19.2f}")
+print(f"   {'Train Time':<15} | {reg_results['linear_regression']['training_time_sec']:<18.2f}s | {reg_results['random_forest_regressor']['training_time_sec']:<18.2f}s")
+print("   " + "─" * 60)
 
 # ============================================================
-# CONCLUSION
+# CLASSIFICATION MODELS (High-Value Ride Dispatch)
 # ============================================================
-better_model = "Random Forest" if rf_metrics["accuracy"] > lr_metrics["accuracy"] else "Logistic Regression"
-acc_diff = abs(rf_metrics["accuracy"] - lr_metrics["accuracy"]) * 100
+print("\n" + "=" * 80)
+print("  PART 2: CLASSIFICATION MODELS (High-Value Ride Dispatch Matching)")
+print(f"  Problem: Classify trips as High-Value (Fare >= ${THRESHOLD_FARE:.2f}) vs Standard")
+print("=" * 80)
 
-print(f"""
-{'=' * 70}
-  ✅ MACHINE LEARNING PIPELINE COMPLETE
-{'=' * 70}
+# --- Model 3: Logistic Regression Classifier ---
+print("\n🎯 [Model 3/4] Training Logistic Regression Classifier...")
+t0 = time.time()
+lr_clf = LogisticRegression(
+    featuresCol="features",
+    labelCol="high_fare_label",
+    maxIter=15,
+    regParam=0.05,
+    elasticNetParam=0.8
+)
+lr_clf_pipeline = Pipeline(stages=[assembler, scaler, lr_clf])
+lr_clf_model = lr_clf_pipeline.fit(train_df)
+lr_clf_preds = lr_clf_model.transform(test_df)
+t_lr_clf = time.time() - t0
+print(f"   ✅ Logistic Regression Classifier trained in {t_lr_clf:.2f}s")
 
-   PROBLEM:   Predict high-fare trips (fare > ${median_fare:.2f})
-   FEATURES:  {len(feature_cols)} features used
-   MODELS:    Logistic Regression vs Random Forest
-   WINNER:    {better_model} (+{acc_diff:.1f}% accuracy advantage)
+# --- Model 4: Random Forest Classifier ---
+print("\n🌲 [Model 4/4] Training Random Forest Classifier...")
+t0 = time.time()
+rf_clf = RandomForestClassifier(
+    featuresCol="features",
+    labelCol="high_fare_label",
+    numTrees=40,
+    maxDepth=8,
+    seed=42
+)
+rf_clf_pipeline = Pipeline(stages=[assembler, scaler, rf_clf])
+rf_clf_model = rf_clf_pipeline.fit(train_df)
+rf_clf_preds = rf_clf_model.transform(test_df)
+t_rf_clf = time.time() - t0
+print(f"   ✅ Random Forest Classifier trained in {t_rf_clf:.2f}s")
 
-   WHY {better_model.upper()} WINS:
-   {'Random Forest captures non-linear patterns:' if better_model == 'Random Forest' else 'Linear model sufficient for this data:'}
-   {'• JFK airport flat-rate fares ($70 regardless of distance)' if better_model == 'Random Forest' else '• Fare is mostly linear with distance'}
-   {'• Congestion surcharge thresholds create step-functions' if better_model == 'Random Forest' else '• Simple features explain most variance'}
-   {'• Time-of-day effects are non-linear (rush hour spikes)' if better_model == 'Random Forest' else '• Model is simpler and faster to deploy'}
+# Evaluate Classification Models
+def evaluate_classifier(predictions, model_name):
+    bin_eval = BinaryClassificationEvaluator(labelCol="high_fare_label", rawPredictionCol="rawPrediction", metricName="areaUnderROC")
+    multi_eval = MulticlassClassificationEvaluator(labelCol="high_fare_label", predictionCol="prediction")
+    
+    auc_roc = bin_eval.evaluate(predictions)
+    multi_eval.setMetricName("accuracy")
+    accuracy = multi_eval.evaluate(predictions)
+    multi_eval.setMetricName("weightedPrecision")
+    precision = multi_eval.evaluate(predictions)
+    multi_eval.setMetricName("weightedRecall")
+    recall = multi_eval.evaluate(predictions)
+    multi_eval.setMetricName("f1")
+    f1 = multi_eval.evaluate(predictions)
+    
+    # Confusion Matrix
+    cm = predictions.groupBy("high_fare_label", "prediction").count().collect()
+    tp = sum(r["count"] for r in cm if r["high_fare_label"] == 1.0 and r["prediction"] == 1.0)
+    tn = sum(r["count"] for r in cm if r["high_fare_label"] == 0.0 and r["prediction"] == 0.0)
+    fp = sum(r["count"] for r in cm if r["high_fare_label"] == 0.0 and r["prediction"] == 1.0)
+    fn = sum(r["count"] for r in cm if r["high_fare_label"] == 1.0 and r["prediction"] == 0.0)
+    
+    return {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "auc_roc": auc_roc,
+        "tp": tp, "tn": tn, "fp": fp, "fn": fn
+    }
 
-   TOP 3 PREDICTIVE FEATURES:
-   1. {importances[0][0]:25s} (importance: {importances[0][1]:.4f})
-   2. {importances[1][0]:25s} (importance: {importances[1][1]:.4f})
-   3. {importances[2][0]:25s} (importance: {importances[2][1]:.4f})
+clf_lr_eval = evaluate_classifier(lr_clf_preds, "Logistic Regression")
+clf_rf_eval = evaluate_classifier(rf_clf_preds, "Random Forest Classifier")
+clf_lr_eval["training_time_sec"] = round(t_lr_clf, 2)
+clf_rf_eval["training_time_sec"] = round(t_rf_clf, 2)
 
-   REAL-WORLD APPLICATION:
-   Taxi dispatchers can use this model to match drivers to
-   high-value trips, increasing driver earnings by ~{acc_diff + 10:.0f}%.
+print("\n📊 CLASSIFICATION EVALUATION RESULTS:")
+print("   " + "─" * 60)
+print(f"   {'Metric':<18} | {'Logistic Regression':<18} | {'Random Forest Clf':<18}")
+print("   " + "─" * 60)
+print(f"   {'Accuracy':<18} | {clf_lr_eval['accuracy']*100:<17.2f}% | {clf_rf_eval['accuracy']*100:<17.2f}%")
+print(f"   {'Weighted Precision':<18} | {clf_lr_eval['precision']:<18.4f} | {clf_rf_eval['precision']:<18.4f}")
+print(f"   {'Weighted Recall':<18}    | {clf_lr_eval['recall']:<18.4f} | {clf_rf_eval['recall']:<18.4f}")
+print(f"   {'F1-Score':<18}   | {clf_lr_eval['f1']:<18.4f} | {clf_rf_eval['f1']:<18.4f}")
+print(f"   {'AUC-ROC':<18}    | {clf_lr_eval['auc_roc']:<18.4f} | {clf_rf_eval['auc_roc']:<18.4f}")
+print(f"   {'Train Time':<18} | {clf_lr_eval['training_time_sec']:<17.2f}s | {clf_rf_eval['training_time_sec']:<17.2f}s")
+print("   " + "─" * 60)
 
-   Next step → Run 03_visualizations.py for charts & dashboard
+# ============================================================
+# FEATURE IMPORTANCE EXTRACTION
+# ============================================================
+rf_reg_stage = rf_reg_model.stages[-1]
+rf_clf_stage = rf_clf_model.stages[-1]
+
+reg_importances = {feat: float(imp) for feat, imp in zip(feature_cols, rf_reg_stage.featureImportances.toArray())}
+clf_importances = {feat: float(imp) for feat, imp in zip(feature_cols, rf_clf_stage.featureImportances.toArray())}
+
+print("\n📊 TOP FEATURE IMPORTANCES (Random Forest Models):")
+print("   " + "─" * 65)
+print(f"   {'Feature':<22} | {'Regression Imp.':<18} | {'Classification Imp.':<18}")
+print("   " + "─" * 65)
+for feat in feature_cols:
+    print(f"   {feat:<22} | {reg_importances[feat]:<18.4f} | {clf_importances[feat]:<18.4f}")
+print("   " + "─" * 65)
+
+# ============================================================
+# SAVE METRICS & SAMPLES FOR VISUALIZATION
+# ============================================================
+all_results = {
+    "threshold_high_fare": THRESHOLD_FARE,
+    "feature_columns": feature_cols,
+    "regression": reg_results,
+    "classification": {
+        "logistic_regression": clf_lr_eval,
+        "random_forest_classifier": clf_rf_eval
+    },
+    "feature_importances": {
+        "regression": reg_importances,
+        "classification": clf_importances
+    }
+}
+
+with open(os.path.join(OUTPUT_DIR, "ml_results_4models.json"), "w") as f:
+    json.dump(all_results, f, indent=2)
+print(f"\n💾 Saved all metrics to: {os.path.join(OUTPUT_DIR, 'ml_results_4models.json')}")
+
+# Save sample predictions for visualization
+print("💾 Saving prediction samples for plotting...")
+lr_reg_preds.select("fare_target", "prediction").limit(5000).toPandas().to_csv(
+    os.path.join(OUTPUT_DIR, "regression_lr_sample.csv"), index=False
+)
+rf_reg_preds.select("fare_target", "prediction").limit(5000).toPandas().to_csv(
+    os.path.join(OUTPUT_DIR, "regression_rf_sample.csv"), index=False
+)
+rf_clf_preds.select("high_fare_label", "prediction").limit(5000).toPandas().to_csv(
+    os.path.join(OUTPUT_DIR, "classification_rf_sample.csv"), index=False
+)
+lr_clf_preds.select("high_fare_label", "prediction").limit(5000).toPandas().to_csv(
+    os.path.join(OUTPUT_DIR, "classification_lr_sample.csv"), index=False
+)
+
+print("""
+================================================================================
+✅ 4-MODEL MACHINE LEARNING PIPELINE COMPLETE
+   1. Linear Regression (Regression Baseline)       → Evaluated (RMSE, R2, MAE)
+   2. Random Forest Regressor (Non-linear Engine)   → Evaluated (RMSE, R2, MAE)
+   3. Logistic Regression (Classification Baseline) → Evaluated (Acc, F1, ROC)
+   4. Random Forest Classifier (Ensemble Predictor) → Evaluated (Acc, F1, ROC)
+================================================================================
 """)
 
 spark.stop()

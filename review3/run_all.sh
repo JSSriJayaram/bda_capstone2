@@ -75,39 +75,52 @@ echo "✅ Step 1 complete — Cleaned data saved"
 echo ""
 
 # ============================================================
-# STEP 2: Scala RDD Processing (via spark-shell)
+# STEP 2: Scala RDD Processing (4 Students Individual Scripts)
 # ============================================================
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  STEP 2/4: Scala + Spark RDD Processing"
+echo "  STEP 2/4: Scala + Spark RDD Processing (4 Students)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  To run interactively (recommended for demo):"
+echo "  To demo interactively in spark-shell (run per student):"
 echo "    spark-shell --driver-memory 4g"
-echo "    :load scala/NycTaxiRDD.scala"
 echo ""
-echo "  Or run non-interactively:"
-echo "    cat scala/NycTaxiRDD.scala | spark-shell --driver-memory 4g"
+echo "    Student 1 (Demand & Hotspots):"
+echo "      :load scala/Student1_SpatialDemandRDD.scala"
 echo ""
-
-# ============================================================
-# STEP 3: PySpark ML Model
-# ============================================================
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  STEP 3/4: Machine Learning (PySpark)"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-spark-submit \
-    --master "local[*]" \
-    --driver-memory 4g \
-    python/02_ml_model.py
-
+echo "    Student 2 (Revenue & Airport Surcharges):"
+echo "      :load scala/Student2_RevenueTollsRDD.scala"
 echo ""
-echo "✅ Step 3 complete — ML models trained and evaluated"
+echo "    Student 3 (Tipping Dynamics & Payment):"
+echo "      :load scala/Student3_TippingBehaviorRDD.scala"
+echo ""
+echo "    Student 4 (Traffic Congestion & Velocity):"
+echo "      :load scala/Student4_CongestionDurationRDD.scala"
+echo ""
+echo "    Master Pipeline (Runs all in sequence):"
+echo "      :load scala/NycTaxiRDD.scala"
 echo ""
 
 # ============================================================
-# STEP 4: Visualizations
+# STEP 3: PySpark 4-Model Machine Learning Pipeline
 # ============================================================
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  STEP 4/4: Visualizations (Python + matplotlib)"
+echo "  STEP 3/4: Machine Learning (4 Models: 2 Reg + 2 Clf)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  1. Linear Regression         (Upfront Fare Estimation)"
+echo "  2. Random Forest Regressor   (Non-linear Fare Estimation)"
+echo "  3. Logistic Regression       (High-Value Trip Dispatch)"
+echo "  4. Random Forest Classifier  (Multi-tree Dispatch Priority)"
+echo ""
+python3 python/02_ml_model.py
+
+echo ""
+echo "✅ Step 3 complete — All 4 ML models trained and evaluated"
+echo ""
+
+# ============================================================
+# STEP 4: Visualizations & 6-Panel Dashboard
+# ============================================================
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  STEP 4/4: Visualizations & Executive Dashboard"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 python3 python/03_visualizations.py
 
