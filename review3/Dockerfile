@@ -6,16 +6,16 @@ FROM python:3.10-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install OpenJDK 17, procps, curl, and build tools
+# Install OpenJDK (via default-jdk-headless), procps, curl, and build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-17-jdk-headless \
+    default-jdk-headless \
     procps \
     curl \
     bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Configure Java environment
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+# Configure Java environment portably across amd64 and arm64
+ENV JAVA_HOME=/usr/lib/jvm/default-java
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 WORKDIR /app

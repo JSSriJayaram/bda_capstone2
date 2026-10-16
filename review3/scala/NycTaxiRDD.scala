@@ -39,6 +39,12 @@ val candidatePaths = Seq(
   "/Users/apple/Documents/sem7/bda/project/review3/data/yellow_tripdata_2026-01.parquet"
 )
 val dataPath = candidatePaths.find(p => new java.io.File(p).exists()).getOrElse("data/yellow_tripdata_2026-01.parquet")
+val dataDir = {
+  val candidates = Seq("data", "review3/data", "/app/review3/data")
+  val target = candidates.find(d => new java.io.File(d).exists()).getOrElse("data")
+  new java.io.File(target).mkdirs()
+  target
+}
 println(s"Loading dataset from: $dataPath")
 val df = spark.read.parquet(dataPath)
 
@@ -73,29 +79,60 @@ println(s"   (Partitions relate to HDFS block size in cluster mode)")
 // WHY map(): We need to transform each Row into a structured tuple
 // for downstream analysis. map() applies a function to EVERY element.
 
+def toDouble(v: Any): Double = v match {
+  case n: Number => n.doubleValue()
+  case null => 0.0
+  case s: String => try { s.toDouble } catch { case _: Exception => 0.0 }
+  case _ => 0.0
+}
+
+def toLong(v: Any): Long = v match {
+  case n: Number => n.longValue()
+  case null => 0L
+  case s: String => try { s.toDouble.toLong } catch { case _: Exception => 0L }
+  case _ => 0L
+}
+
+def toMillis(v: Any): Long = v match {
+  case ts: java.sql.Timestamp => ts.getTime
+  case inst: java.time.Instant => inst.toEpochMilli
+  case ldt: java.time.LocalDateTime => ldt.atZone(java.time.ZoneId.systemDefault()).toInstant.toEpochMilli
+  case l: java.lang.Long => l.toLong
+  case d: java.util.Date => d.getTime
+  case s: String =>
+    try {
+      java.time.LocalDateTime.parse(s.replace(" ", "T")).atZone(java.time.ZoneId.systemDefault()).toInstant.toEpochMilli
+    } catch { case _: Exception => 0L }
+  case _ => 0L
+}
+
+def getHour(millis: Long): Int = {
+  if (millis <= 0L) -1
+  else {
+    val cal = java.util.Calendar.getInstance()
+    cal.setTimeInMillis(millis)
+    cal.get(java.util.Calendar.HOUR_OF_DAY)
+  }
+}
+
 val parsedRDD = rawRDD.map { row =>
   try {
-    val vendorId     = Option(row.getAs[Any]("VendorID")).map(_.toString.toDouble.toLong).getOrElse(0L)
-    val pickupDT     = if (row.isNullAt(row.fieldIndex("tpep_pickup_datetime"))) null else row.getAs[java.sql.Timestamp]("tpep_pickup_datetime")
-    val dropoffDT    = if (row.isNullAt(row.fieldIndex("tpep_dropoff_datetime"))) null else row.getAs[java.sql.Timestamp]("tpep_dropoff_datetime")
-    val passengerCnt = Option(row.getAs[Any]("passenger_count")).map(_.toString.toDouble.toLong).getOrElse(0L)
-    val tripDistance = Option(row.getAs[Any]("trip_distance")).map(_.toString.toDouble).getOrElse(0.0)
-    val puLocationId = Option(row.getAs[Any]("PULocationID")).map(_.toString.toDouble.toLong).getOrElse(0L)
-    val doLocationId = Option(row.getAs[Any]("DOLocationID")).map(_.toString.toDouble.toLong).getOrElse(0L)
-    val paymentType  = Option(row.getAs[Any]("payment_type")).map(_.toString.toDouble.toLong).getOrElse(0L)
-    val fareAmount   = Option(row.getAs[Any]("fare_amount")).map(_.toString.toDouble).getOrElse(0.0)
-    val tipAmount    = Option(row.getAs[Any]("tip_amount")).map(_.toString.toDouble).getOrElse(0.0)
-    val totalAmount  = Option(row.getAs[Any]("total_amount")).map(_.toString.toDouble).getOrElse(0.0)
-    val congestion   = Option(row.getAs[Any]("congestion_surcharge")).map(_.toString.toDouble).getOrElse(0.0)
+    val vendorId     = Option(row.getAs[Any]("VendorID")).map(toLong).getOrElse(0L)
+    val pickupMillis = Option(row.getAs[Any]("tpep_pickup_datetime")).map(toMillis).getOrElse(0L)
+    val dropoffMillis= Option(row.getAs[Any]("tpep_dropoff_datetime")).map(toMillis).getOrElse(0L)
+    val passengerCnt = Option(row.getAs[Any]("passenger_count")).map(toLong).getOrElse(0L)
+    val tripDistance = Option(row.getAs[Any]("trip_distance")).map(toDouble).getOrElse(0.0)
+    val puLocationId = Option(row.getAs[Any]("PULocationID")).map(toLong).getOrElse(0L)
+    val doLocationId = Option(row.getAs[Any]("DOLocationID")).map(toLong).getOrElse(0L)
+    val paymentType  = Option(row.getAs[Any]("payment_type")).map(toLong).getOrElse(0L)
+    val fareAmount   = Option(row.getAs[Any]("fare_amount")).map(toDouble).getOrElse(0.0)
+    val tipAmount    = Option(row.getAs[Any]("tip_amount")).map(toDouble).getOrElse(0.0)
+    val totalAmount  = Option(row.getAs[Any]("total_amount")).map(toDouble).getOrElse(0.0)
+    val congestion   = Option(row.getAs[Any]("congestion_surcharge")).map(toDouble).getOrElse(0.0)
 
-    val hour = if (pickupDT != null) {
-      val cal = java.util.Calendar.getInstance()
-      cal.setTime(pickupDT)
-      cal.get(java.util.Calendar.HOUR_OF_DAY)
-    } else -1
-
-    val durationMin = if (pickupDT != null && dropoffDT != null) {
-      (dropoffDT.getTime - pickupDT.getTime) / 60000.0
+    val hour = getHour(pickupMillis)
+    val durationMin = if (pickupMillis > 0L && dropoffMillis > pickupMillis) {
+      (dropoffMillis - pickupMillis) / 60000.0
     } else 0.0
 
     // Return tuple: (vendor, passengers, distance, puZone, doZone,
@@ -226,8 +263,8 @@ println("=" * 70)
 // Key-Value operation: (payment_type, (tip_amount, 1)) → reduceByKey → average
 val tipByPaymentRDD = cleanRDD.map { case (_, _, _, _, _, payType, _, tip, _, _, _, _) =>
   (payType, (tip, 1L))
-}.reduceByKey { case ((t1, c1), (t2, c2)) =>
-  (t1 + t2, c1 + c2)
+}.reduceByKey { (p1: (Double, Long), p2: (Double, Long)) =>
+  (p1._1 + p2._1, p1._2 + p2._2)
 }
 
 // T5: mapValues() — Compute average from (sum, count)
@@ -285,10 +322,12 @@ val timePeriodAndZoneRDD = cleanRDD.flatMap {
 }
 println("🔄 [flatMap()] Emitted (timePeriod, farePerMile) AND (zone, farePerMile) pairs")
 
-val avgFarePerMile = timePeriodAndZoneRDD
-  .filter(_._1.startsWith("TIME:"))
-  .reduceByKey { case ((f1, c1), (f2, c2)) => (f1 + f2, c1 + c2) }
-  .mapValues { case (total, count) => total / count }
+val avgFarePerMile = (
+  timePeriodAndZoneRDD
+    .filter(_._1.startsWith("TIME:"))
+    .reduceByKey { (a: (Double, Long), b: (Double, Long)) => (a._1 + b._1, a._2 + b._2) }
+    .mapValues { case (total, count) => total / count }
+)
 
 println("\n📊 Average Fare Per Mile by Time Period:")
 println("   " + "-" * 50)
@@ -336,8 +375,8 @@ val cleanDF = cleanRDD.map { case (vendor, passengers, distance, puZone, doZone,
                                     payType, fare, tip, total, hour, duration, congestion) =>
   (vendor, passengers, distance, puZone, doZone, payType, fare, tip, total,
    hour, duration, congestion)
-}.toDF("vendor_id", "passenger_count", "trip_distance", "pu_location_id",
-       "do_location_id", "payment_type", "fare_amount", "tip_amount",
+}.toDF("VendorID", "passenger_count", "trip_distance", "PULocationID",
+       "DOLocationID", "payment_type", "fare_amount", "tip_amount",
        "total_amount", "pickup_hour", "trip_duration_min", "congestion_surcharge")
 
 // Add derived features for ML
@@ -354,8 +393,8 @@ val mlDF = cleanDF
       col("fare_amount") / col("trip_distance")
     ).otherwise(0.0))
 
-mlDF.write.mode("overwrite").parquet(s"$dataDir/yellow_taxi_cleaned_for_ml.parquet")
-println(s"✅ Saved ${mlDF.count()} rows to $dataDir/yellow_taxi_cleaned_for_ml.parquet")
+mlDF.write.mode("overwrite").parquet(s"$dataDir/yellow_taxi_rdd_processed.parquet")
+println(s"✅ Saved ${mlDF.count()} rows to $dataDir/yellow_taxi_rdd_processed.parquet")
 
 // ============================================================
 // SUMMARY
@@ -376,7 +415,7 @@ println(s"""
      A1: count()   — Total clean records: ${"%,d".format(totalClean)}
      A2: take(5)   — Preview records
      A3: collect()  — Fetch all 24 hourly aggregates
-     A4: reduce()   — Max fare: $$$maxFare
+     A4: reduce()   — Max fare: $$${maxFare}
 
    SPARK CONCEPTS:
      • Partitions:  ${rawRDD.getNumPartitions}

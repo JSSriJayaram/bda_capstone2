@@ -14,10 +14,59 @@ If you don't want to install Java 21 or Apache Spark on your host machine, you c
 cd review3
 docker compose up --build
 
-# Option B: From the repository root (bda2/)
+# Option B: From the repository root (bda_capstone2/)
 docker compose run --rm spark-review3
 ```
-This automatically builds the environment with OpenJDK 17 + Python 3.10 + PySpark, mounts the raw dataset, executes all 4 pipeline stages, and saves the generated charts to `review3/output/`.
+This automatically builds the environment with OpenJDK 21 + Python 3.10 + PySpark, mounts the raw dataset, executes all 4 pipeline stages, and saves the generated charts to `review3/output/`.
+
+---
+
+## 🛠️ Step-by-Step Commands Run in the Pipeline
+
+### Option 1: Running Individual Stages via Docker (Isolated)
+
+You can run individual pipeline stages directly inside the built container image:
+
+```bash
+# Build the Docker image once
+docker compose build
+
+# Stage 1: Data Cleaning & Exploratory Data Analysis (PySpark)
+docker run --rm \
+  -v "$(pwd)/../data/raw:/app/data:ro" \
+  -v "$(pwd)/output:/app/review3/output" \
+  -v "$(pwd)/python:/app/review3/python:ro" \
+  -v "$(pwd)/scala:/app/review3/scala:ro" \
+  -v "$(pwd)/data:/app/review3/data" \
+  review3-spark-review3 spark-submit --master "local[*]" --driver-memory 4g python/01_preprocessing_eda.py
+
+# Stage 2: Scala + Spark RDD Processing (Non-interactive)
+docker run --rm \
+  -v "$(pwd)/../data/raw:/app/data:ro" \
+  -v "$(pwd)/output:/app/review3/output" \
+  -v "$(pwd)/python:/app/review3/python:ro" \
+  -v "$(pwd)/scala:/app/review3/scala:ro" \
+  -v "$(pwd)/data:/app/review3/data" \
+  review3-spark-review3 bash -c "printf ':load scala/NycTaxiRDD.scala\n:quit\n' | spark-shell --master 'local[*]' --driver-memory 4g"
+
+# Stage 3: Machine Learning Pipeline (PySpark MLlib)
+docker run --rm \
+  -v "$(pwd)/../data/raw:/app/data:ro" \
+  -v "$(pwd)/output:/app/review3/output" \
+  -v "$(pwd)/python:/app/review3/python:ro" \
+  -v "$(pwd)/scala:/app/review3/scala:ro" \
+  -v "$(pwd)/data:/app/review3/data" \
+  review3-spark-review3 spark-submit --master "local[*]" --driver-memory 4g python/02_ml_model.py
+
+# Stage 4: Generate Charts & Executive Dashboard
+docker run --rm \
+  -v "$(pwd)/../data/raw:/app/data:ro" \
+  -v "$(pwd)/output:/app/review3/output" \
+  -v "$(pwd)/python:/app/review3/python:ro" \
+  -v "$(pwd)/scala:/app/review3/scala:ro" \
+  -v "$(pwd)/data:/app/review3/data" \
+  review3-spark-review3 python3 python/03_visualizations.py
+```
 
 ---
 
@@ -40,7 +89,7 @@ cd review3
 bash run_all.sh
 ```
 
-### 3. Run Steps Individually
+### 3. Run Steps Individually on Host
 
 #### **Step 1: Data Cleaning & Exploratory Data Analysis (PySpark)**
 ```bash
@@ -50,12 +99,13 @@ spark-submit --master "local[*]" --driver-memory 4g python/01_preprocessing_eda.
 ```
 *Outputs: Cleans 1.22M outlier records, produces summary statistics, and saves `hourly_demand.csv`, `zone_stats.csv`, and `payment_tip_stats.csv`.*
 
-#### **Step 2: Scala + Spark RDD Processing (Interactive)**
+#### **Step 2: Scala + Spark RDD Processing**
 ```bash
+# Non-interactive execution:
+printf ":load scala/NycTaxiRDD.scala\n:quit\n" | spark-shell --master "local[*]" --driver-memory 4g
+
+# Interactive execution (recommended for demo):
 spark-shell --driver-memory 4g
-```
-Inside the interactive Scala shell, type:
-```scala
 :load scala/NycTaxiRDD.scala
 ```
 *Outputs: Demonstrates RDD lineage DAG, partition count, `cache()` in memory/disk, 5 lazy transformations (`map`, `filter`, `reduceByKey`, `mapValues`, `flatMap`), and 4 eager actions (`count`, `take`, `reduce`, `collect`).*
@@ -73,6 +123,21 @@ spark-submit --master "local[*]" --driver-memory 4g python/02_ml_model.py
 python3 python/03_visualizations.py
 ```
 *Outputs: Generates 5 high-resolution individual charts and a 6-panel executive dashboard saved to `output/dashboard.png`.*
+
+---
+
+## 🔧 Bugs Diagnosed & Fixed in Review 3 Pipeline
+
+During testing, the following issues were identified and resolved across Docker and script layers:
+
+1. **Debian 13 OpenJDK Package**: In `python:3.10-slim` (Debian 13 trixie), `openjdk-17-jdk-headless` is not packaged. Fixed `Dockerfile` to use `default-jdk-headless` which provides OpenJDK 21 LTS.
+2. **Architecture-Independent `JAVA_HOME`**: Replaced hardcoded `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64` in `Dockerfile` with `/usr/lib/jvm/default-java`, making builds portable across both Apple Silicon (ARM64) and Linux (AMD64).
+3. **Parquet Input Path Resolution**: `01_preprocessing_eda.py` failed with `PATH_NOT_FOUND` when reading from `/app/data/`. Added fallback candidate search across `data/`, `../data/raw/`, and `/app/data/`, and ensured `parquet_file` is not overwritten.
+4. **Read-Only Volume Write Conflict**: `NycTaxiRDD.scala` attempted to write Parquet output to `dataPath.getParent` (`/app/data`), which is mounted read-only (`:ro`). Fixed `dataDir` to target writable `data/` and export to `yellow_taxi_rdd_processed.parquet`.
+5. **Timestamp ClassCastException in Scala RDD**: `tpep_pickup_datetime` was cast strictly to `java.sql.Timestamp`, throwing `ClassCastException` in Spark 4 and causing `cleanRDD.count()` to return 0. Added polymorphic timestamp parsing supporting `Instant`, `LocalDateTime`, `Timestamp`, and epoch millis.
+6. **Scala Line-by-Line Type Inference**: Multi-line method chaining in `reduceByKey` failed under line-by-line interpretation. Added explicit parameter types `(a: (Double, Long), b: (Double, Long))` and wrapped expressions in parentheses.
+7. **Schema Consistency for ML Pipeline**: Standardized feature column names (`PULocationID` / `pu_location_id`) and added dynamic `pickup_dayofweek` fallback in `02_ml_model.py`.
+8. **Automated Master Orchestration**: Updated `run_all.sh` to automatically invoke Step 2 non-interactively via `printf ':load scala/NycTaxiRDD.scala\n:quit\n' | spark-shell`.
 
 ---
 

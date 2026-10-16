@@ -85,7 +85,14 @@ else:
     print("\n⚠️  Cleaned data not found. Run 01_preprocessing_eda.py first!")
     print("   Loading raw data and applying quick clean...")
     from pyspark.sql.functions import hour, dayofweek, unix_timestamp
-    raw = spark.read.parquet(os.path.join(DATA_DIR, "yellow_tripdata_2026-01.parquet"))
+    raw_candidates = [
+        os.path.join(DATA_DIR, "yellow_tripdata_2026-01.parquet"),
+        os.path.join(os.path.dirname(DATA_DIR), "..", "data", "raw", "yellow_tripdata_2026-01.parquet"),
+        "/app/data/yellow_tripdata_2026-01.parquet",
+        "data/yellow_tripdata_2026-01.parquet"
+    ]
+    raw_path = next((p for p in raw_candidates if os.path.exists(p)), os.path.join(DATA_DIR, "yellow_tripdata_2026-01.parquet"))
+    raw = spark.read.parquet(raw_path)
     df = raw.withColumn("trip_duration_min",
             (unix_timestamp("tpep_dropoff_datetime") -
              unix_timestamp("tpep_pickup_datetime")) / 60.0) \
@@ -140,6 +147,21 @@ for row in class_dist:
 print("\n" + "=" * 70)
 print("  STEP 3: FEATURE PREPARATION")
 print("=" * 70)
+
+# Standardize column names if needed
+if "PULocationID" not in df.columns and "pu_location_id" in df.columns:
+    df = df.withColumnRenamed("pu_location_id", "PULocationID")
+if "DOLocationID" not in df.columns and "do_location_id" in df.columns:
+    df = df.withColumnRenamed("do_location_id", "DOLocationID")
+if "VendorID" not in df.columns and "vendor_id" in df.columns:
+    df = df.withColumnRenamed("vendor_id", "VendorID")
+if "pickup_dayofweek" not in df.columns:
+    if "tpep_pickup_datetime" in df.columns:
+        from pyspark.sql.functions import dayofweek
+        df = df.withColumn("pickup_dayofweek", dayofweek("tpep_pickup_datetime"))
+    else:
+        from pyspark.sql.functions import lit
+        df = df.withColumn("pickup_dayofweek", lit(1))
 
 # Select features for ML
 # WHY THESE FEATURES:

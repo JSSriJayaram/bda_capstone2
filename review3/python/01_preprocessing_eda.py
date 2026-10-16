@@ -35,16 +35,20 @@ spark = SparkSession.builder \
 
 spark.sparkContext.setLogLevel("WARN")
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-# Also check parent data/raw directory if inside bda2 repository or root
-if not os.path.exists(os.path.join(DATA_DIR, "yellow_tripdata_2026-01.parquet")):
-    parent_raw = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "raw")
-    if os.path.exists(os.path.join(parent_raw, "yellow_tripdata_2026-01.parquet")):
-        DATA_DIR = parent_raw
-
-OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(PROJECT_DIR, "data")
+OUTPUT_DIR = os.path.join(PROJECT_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
+
+candidate_raw = [
+    os.path.join(DATA_DIR, "yellow_tripdata_2026-01.parquet"),
+    os.path.join(PROJECT_DIR, "..", "data", "raw", "yellow_tripdata_2026-01.parquet"),
+    "/app/data/yellow_tripdata_2026-01.parquet",
+    "data/yellow_tripdata_2026-01.parquet",
+    "../data/raw/yellow_tripdata_2026-01.parquet"
+]
+parquet_file = next((p for p in candidate_raw if os.path.exists(p)), os.path.join(DATA_DIR, "yellow_tripdata_2026-01.parquet"))
 
 print("=" * 70)
 print("  NYC TAXI — PREPROCESSING & EDA")
@@ -54,7 +58,6 @@ print("=" * 70)
 # ============================================================
 # STEP 1: LOAD RAW DATA
 # ============================================================
-parquet_file = os.path.join(DATA_DIR, "yellow_tripdata_2026-01.parquet")
 print(f"Loading raw data from: {parquet_file}")
 raw_df = spark.read.parquet(parquet_file)
 

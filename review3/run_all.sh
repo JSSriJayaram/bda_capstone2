@@ -11,28 +11,32 @@ set -e
 # Setup PATH for homebrew tools and Python scripts (spark-submit, spark-shell)
 eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null || true
 
-# Auto-detect JAVA_HOME if not already exported
-if [ -z "$JAVA_HOME" ]; then
-    if [ -d "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home" ]; then
+# Auto-detect JAVA_HOME if not already exported or if path doesn't exist
+if [ -z "$JAVA_HOME" ] || [ ! -d "$JAVA_HOME" ]; then
+    if [ -d "/usr/lib/jvm/default-java" ]; then
+        export JAVA_HOME="/usr/lib/jvm/default-java"
+    elif [ -d "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home" ]; then
+        export JAVA_HOME="/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home"
+    elif [ -d "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home" ]; then
         export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
-    elif command -v /usr/libexec/java_home >/dev/null 2>&1; then
+    elif command -v /usr/libexec/java_home >/dev/null 2>&1 && /usr/libexec/java_home -v 21 >/dev/null 2>&1; then
         export JAVA_HOME=$(/usr/libexec/java_home -v 21 2>/dev/null || /usr/libexec/java_home 2>/dev/null)
-    elif [ -d "/usr/lib/jvm/java-21-openjdk-amd64" ]; then
-        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
-    elif [ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]; then
-        export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
     elif [ -d "/usr/lib/jvm/java-21-openjdk-arm64" ]; then
         export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-arm64"
     elif [ -d "/usr/lib/jvm/java-17-openjdk-arm64" ]; then
         export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-arm64"
+    elif [ -d "/usr/lib/jvm/java-21-openjdk-amd64" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
+    elif [ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
     fi
 fi
 
-# Add Java and user Python scripts to PATH
+# Add Java to PATH
 if [ -n "$JAVA_HOME" ]; then
     export PATH="$JAVA_HOME/bin:$PATH"
 fi
-export PATH="/Users/apple/Library/Python/3.9/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_DIR"
@@ -80,12 +84,11 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  STEP 2/4: Scala + Spark RDD Processing"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  To run interactively (recommended for demo):"
-echo "    spark-shell --driver-memory 4g"
-echo "    :load scala/NycTaxiRDD.scala"
+echo "  Running Scala RDD pipeline non-interactively..."
+printf ":load scala/NycTaxiRDD.scala\n:quit\n" | spark-shell --master "local[*]" --driver-memory 4g
+
 echo ""
-echo "  Or run non-interactively:"
-echo "    cat scala/NycTaxiRDD.scala | spark-shell --driver-memory 4g"
+echo "✅ Step 2 complete — Scala RDD pipeline finished"
 echo ""
 
 # ============================================================
