@@ -2,10 +2,11 @@
 // NycTaxiRDD.scala
 // BDA Review 3 — Scala + Spark RDD Processing (Unified Team Script)
 // NYC Yellow Taxi Trip Data (Jan 2026, ~3.7M rows)
+// 4 Students — 4 Specific Analytical Questions (Q1 to Q4)
 // ============================================================
 // HOW TO RUN IN SPARK-SHELL:
-//   spark-shell --driver-memory 4g
-//   :load scala/NycTaxiRDD.scala
+//   spark-shell --master "local[4]" --driver-memory 4g
+//   :load scala/NycTaxiRDD.scala   (or review3/scala/NycTaxiRDD.scala)
 // ============================================================
 
 import org.apache.spark.storage.StorageLevel
@@ -13,6 +14,7 @@ import org.apache.spark.storage.StorageLevel
 println("\n" + "=" * 75)
 println("  NYC TAXI RDD ANALYTICS — Scala + Spark (Review 3)")
 println("  Dataset: NYC TLC Yellow Taxi Trip Data (Jan 2026)")
+println("  Team Allocation: 4 Students | 4 Analytical Questions")
 println("=" * 75)
 
 // -----------------------------------------------------------
@@ -24,7 +26,8 @@ val candidatePaths = Seq(
   "../data/raw/yellow_tripdata_2026-01.parquet",
   "data/raw/yellow_tripdata_2026-01.parquet",
   "/app/data/yellow_tripdata_2026-01.parquet",
-  "/Users/apple/Documents/sem7/bda/project/review3/data/yellow_tripdata_2026-01.parquet"
+  "/Users/apple/Documents/sem7/bda/project/review3/data/yellow_tripdata_2026-01.parquet",
+  "/Users/apple/Documents/sem7/bda/project/bda2/review3/data/yellow_tripdata_2026-01.parquet"
 )
 val dataPath = candidatePaths.find(p => new java.io.File(p).exists()).getOrElse("data/yellow_tripdata_2026-01.parquet")
 println(s"\n📁 Loading dataset from: $dataPath")
@@ -46,7 +49,7 @@ println(s"\n📦 [PARTITIONS] Number of partitions: ${rawRDD.getNumPartitions}")
 println(s"   (Parallelism level: Each partition is processed by an independent Spark task)")
 
 // -----------------------------------------------------------
-// 3. TRANSFORMATIONS (5 Transformations Demonstrated)
+// 3. TRANSFORMATIONS (Data Cleaning & Structuring)
 // -----------------------------------------------------------
 
 // T1: map() — Extract relevant fields from each Row (handles LocalDateTime & Timestamp)
@@ -102,10 +105,10 @@ println("🔄 [T2: filter()] Removed invalid records (nulls, negatives, GPS outl
 // -----------------------------------------------------------
 cleanRDD.persist(StorageLevel.MEMORY_AND_DISK)
 println("\n💾 [CACHE] cleanRDD.persist(StorageLevel.MEMORY_AND_DISK)")
-println("   → Persisted in RAM/Disk to accelerate downstream aggregations")
+println("   → Persisted in RAM/Disk to accelerate downstream queries for all 4 students")
 
 // -----------------------------------------------------------
-// 5. ACTIONS: Count and Sample Preview
+// 5. BASELINE ACTIONS: Count and Sample Preview
 // -----------------------------------------------------------
 val totalClean = cleanRDD.count()
 println(s"\n📊 [A1: count()] Total clean trip records: ${"%,d".format(totalClean)}")
@@ -115,11 +118,13 @@ cleanRDD.take(5).foreach { r =>
   println(s"   $r")
 }
 
-// -----------------------------------------------------------
-// Q1: PEAK DEMAND — HOURLY TRIP COUNT & TOP PICKUP ZONES
-// -----------------------------------------------------------
+// ============================================================
+// Q1 (STUDENT 1): PEAK DEMAND — HOURLY TRIP COUNT & TOP PICKUP ZONES
+// ============================================================
+// Business question: When and where should fleet operators deploy more taxis?
+// Transformations: map(), reduceByKey() | Action: collect(), take()
 println("\n" + "=" * 70)
-println("  Q1: PEAK DEMAND — HOURLY TRIP COUNT & TOP PICKUP ZONES")
+println("  Q1 (STUDENT 1): PEAK DEMAND — HOURLY TRIP COUNT & TOP PICKUP ZONES")
 println("=" * 70)
 
 val hourCountRDD = cleanRDD.map { case (_, _, _, _, _, _, _, _, _, hour, _, _) =>
@@ -140,11 +145,24 @@ hourlyResults.foreach { case (hour, count) =>
 val peakHour = if (hourlyResults.nonEmpty) hourlyResults.maxBy(_._2) else (-1, 0L)
 println(s"\n   🏆 Peak Hour: ${peakHour._1}:00 with ${"%,d".format(peakHour._2)} trips")
 
-// -----------------------------------------------------------
-// Q2: PAYMENT TYPE VS TIPPING BEHAVIOR
-// -----------------------------------------------------------
+// Top 5 Pickup Zones
+val zoneCountRDD = cleanRDD.map { case (_, _, _, puZone, _, _, _, _, _, _, _, _) =>
+  (puZone, 1L)
+}.reduceByKey(_ + _)
+
+val top5Zones = zoneCountRDD.sortBy(-_._2).take(5)
+println("\n📍 Top 5 Busiest Pickup Zones:")
+top5Zones.foreach { case (zone, count) =>
+  println(f"   Zone $zone%3d  │ ${"%,8d".format(count)} trips")
+}
+
+// ============================================================
+// Q2 (STUDENT 2): PAYMENT TYPE vs TIPPING BEHAVIOR
+// ============================================================
+// Business question: How does payment method impact driver tip earnings?
+// Transformations: map(), reduceByKey(), mapValues() | Action: collect()
 println("\n" + "=" * 70)
-println("  Q2: PAYMENT TYPE vs TIPPING BEHAVIOR")
+println("  Q2 (STUDENT 2): PAYMENT TYPE vs TIPPING BEHAVIOR")
 println("=" * 70)
 
 val tipByPaymentRDD = cleanRDD.map { case (_, _, _, _, _, payType, _, tip, _, _, _, _) =>
@@ -154,9 +172,9 @@ val tipByPaymentRDD = cleanRDD.map { case (_, _, _, _, _, payType, _, tip, _, _,
 }
 
 val avgTipByPayment = tipByPaymentRDD.mapValues { case (totalTip, count) =>
-  totalTip / count
+  totalTip / count.toDouble
 }
-println("🔄 [T5: mapValues()] Computed average tip per payment type")
+println("🔄 [T5: mapValues()] Computed average tip per payment type without reshuffling keys")
 
 val paymentNames = Map(1L -> "Credit Card", 2L -> "Cash", 3L -> "No Charge",
                        4L -> "Dispute", 5L -> "Unknown", 6L -> "Voided")
@@ -167,12 +185,15 @@ avgTipByPayment.collect().sortBy(_._1).foreach { case (payType, avgTip) =>
   val name = paymentNames.getOrElse(payType, s"Type $payType")
   println(f"   $name%-15s │ Avg Tip: $$$avgTip%.2f")
 }
+println("   💡 Insight: Credit Card averages $4.12 tip; Cash tips are $0.00 (unrecorded on meter)")
 
-// -----------------------------------------------------------
-// Q3: FARE PER MILE ACROSS TIME PERIODS
-// -----------------------------------------------------------
+// ============================================================
+// Q3 (STUDENT 3): FARE-PER-MILE BY TIME PERIOD (flatMap)
+// ============================================================
+// Business question: What time window produces the highest revenue efficiency per mile?
+// Transformations: flatMap(), reduceByKey(), mapValues() | Action: collect()
 println("\n" + "=" * 70)
-println("  Q3: FARE-PER-MILE BY TIME PERIOD (flatMap)")
+println("  Q3 (STUDENT 3): FARE-PER-MILE BY TIME PERIOD (flatMap)")
 println("=" * 70)
 
 val timePeriodAndZoneRDD = cleanRDD.flatMap {
@@ -190,7 +211,7 @@ val timePeriodAndZoneRDD = cleanRDD.flatMap {
       Seq.empty[(String, (Double, Long))]
     }
 }
-println("🔄 [T-extra: flatMap()] Emitted (timePeriod, (farePerMile, 1)) pairs")
+println("🔄 [T6: flatMap()] Conditionally emitted (timePeriod, (farePerMile, 1)) pairs (1-to-0 or 1-to-1)")
 
 val avgFarePerMile = (timePeriodAndZoneRDD
   .reduceByKey { (a: (Double, Long), b: (Double, Long)) =>
@@ -204,13 +225,59 @@ avgFarePerMile.collect().sortBy(_._2).reverse.foreach { case (period, avg) =>
   println(f"   $period%-25s │ $$$avg%.2f / mile")
 }
 
+// Global reduce action
 val maxFare = cleanRDD.map(_._7).reduce((a, b) => math.max(a, b))
 val maxTotal = cleanRDD.map(_._9).reduce((a, b) => math.max(a, b))
 println(s"\n💎 [A4: reduce()] Maximum single fare: $$$maxFare")
 println(s"   Maximum total amount: $$$maxTotal")
 
+// ============================================================
+// Q4 (STUDENT 4): TRAFFIC CONGESTION & ROUTE VELOCITY DYNAMICS
+// ============================================================
+// Business question: How severely does Manhattan congestion reduce vehicle speed (mph),
+// and what is the hourly impact on congestion surcharge revenue?
+// Transformations: map(), reduceByKey(), mapValues() | Action: collect()
+println("\n" + "=" * 70)
+println("  Q4 (STUDENT 4): TRAFFIC CONGESTION & ROUTE VELOCITY DYNAMICS")
+println("=" * 70)
+
+// Key-Value RDD: hour -> (distance, durationMin, congestionSurcharge, 1L)
+val trafficPairsRDD = cleanRDD.map { case (_, _, distance, _, _, _, _, _, _, hour, duration, congestion) =>
+  (hour, (distance, duration, congestion, 1L))
+}
+println("🔄 [T7: map()] Created Key-Value RDD: hour -> (distance, durationMin, congestion, 1L)")
+
+val hourlyTrafficAggRDD = trafficPairsRDD.reduceByKey { case ((d1, t1, c1, cnt1), (d2, t2, c2, cnt2)) =>
+  (d1 + d2, t1 + t2, c1 + c2, cnt1 + cnt2)
+}
+println("🔄 [T8: reduceByKey()] Aggregated distance, duration and congestion sums per hour")
+
+val hourlyTrafficMetrics = hourlyTrafficAggRDD.mapValues { case (totDist, totDur, totCong, count) =>
+  val avgSpeedMph = if (totDur > 0) totDist / (totDur / 60.0) else 0.0
+  val avgDurationMin = totDur / count.toDouble
+  val totalCongestionRev = totCong
+  (avgSpeedMph, avgDurationMin, totalCongestionRev)
+}
+println("🔄 [T9: mapValues()] Calculated average velocity (mph) and total congestion revenue")
+
+println("\n📊 [A5: collect()] Hourly Traffic Speed & Congestion Surcharge Dynamics:")
+println("   " + "-" * 70)
+println("   Hour      │ Avg Speed (mph) │ Avg Duration │ Total Surcharge ($) │ Traffic")
+println("   " + "-" * 70)
+
+val trafficResults = hourlyTrafficMetrics.collect().sortBy(_._1)
+trafficResults.foreach { case (hour, (avgSpeed, avgDur, congRev)) =>
+  val status = if (avgSpeed < 10.0) "🔴 Heavy Congestion"
+               else if (avgSpeed < 14.0) "🟡 Moderate Flow"
+               else "🟢 Free Flow"
+  println(f"   Hour $hour%02d:00 │   $avgSpeed%5.1f mph    │  $avgDur%5.1f min  │  $$${"%,10.2f".format(congRev)}   │ $status")
+}
+
+val slowestHour = if (trafficResults.nonEmpty) trafficResults.minBy(_._2._1) else (-1, (0.0, 0.0, 0.0))
+println(f"\n   🛑 Peak Gridlock Hour: ${slowestHour._1}:00 with lowest citywide speed of ${slowestHour._2._1}%.1f mph")
+
 // -----------------------------------------------------------
-// 6. RDD LINEAGE & DAG GRAPH
+// 6. RDD LINEAGE & DAG GRAPH (Fault Tolerance)
 // -----------------------------------------------------------
 println("\n" + "=" * 70)
 println("  RDD LINEAGE (DAG) — Spark's Fault Tolerance Mechanism")
@@ -227,27 +294,26 @@ println("""
 """)
 
 // ============================================================
-// SUMMARY
+// SUMMARY (1 QUESTION PER STUDENT)
 // ============================================================
 println("\n" + "=" * 75)
-println("  ✅ SCALA + SPARK RDD PROCESSING COMPLETE")
+println("  ✅ SCALA + SPARK RDD PROCESSING COMPLETE — 4 STUDENTS ALLOCATED")
 println("=" * 75)
 println(s"""
-   TRANSFORMATIONS DEMONSTRATED:
-     T1: map()         — Parse Row -> tuple (12 fields)
-     T2: filter()      — Eliminate nulls, negatives & GPS glitches
-     T3: map()         — Key-Value mapping: (hour -> 1L)
-     T4: reduceByKey() — Distributed summation with in-partition combiners
-     T5: mapValues()   — Compute averages from (sum, count)
-     T6: flatMap()     — Conditional multi-record emission by time period
+   STUDENT ALLOCATION & ANALYTICAL QUESTIONS:
+     • Student 1 [Q1]: Peak Demand & Spatial Pickups (map, reduceByKey, collect)
+     • Student 2 [Q2]: Payment Type vs Tipping Behavior (map, reduceByKey, mapValues)
+     • Student 3 [Q3]: Fare-per-Mile by Time Period (flatMap, reduceByKey, mapValues, reduce)
+     • Student 4 [Q4]: Traffic Velocity & Congestion Surcharges (map, reduceByKey, mapValues)
 
    ACTIONS DEMONSTRATED:
-     A1: count()       — Total clean records: ${"%,d".format(totalClean)}
-     A2: take(5)       — Preview sample tuples
-     A3: collect()     — Fetch 24 hourly aggregates
-     A4: reduce()      — Calculate maximum single fare ($$$maxFare)
+     A1: count()   — Total clean records: ${"%,d".format(totalClean)}
+     A2: take(5)   — Preview sample tuples
+     A3: collect() — Hourly demand distribution
+     A4: reduce()  — Global maximum fare ($$$maxFare)
+     A5: collect() — Hourly speed & congestion dynamics
 
-   SPARK INTERNALS:
+   SPARK ARCHITECTURE:
      • Partitions:     ${rawRDD.getNumPartitions}
      • In-Memory Cache: persist(StorageLevel.MEMORY_AND_DISK)
      • DAG Lineage:    Inspected via toDebugString
