@@ -247,8 +247,9 @@ val trafficPairsRDD = cleanRDD.map { case (_, _, distance, _, _, _, _, _, _, hou
 }
 println("🔄 [T7: map()] Created Key-Value RDD: hour -> (distance, durationMin, congestion, 1L)")
 
-val hourlyTrafficAggRDD = trafficPairsRDD.reduceByKey { case ((d1, t1, c1, cnt1), (d2, t2, c2, cnt2)) =>
-  (d1 + d2, t1 + t2, c1 + c2, cnt1 + cnt2)
+val hourlyTrafficAggRDD = trafficPairsRDD.reduceByKey {
+  (a: (Double, Double, Double, Long), b: (Double, Double, Double, Long)) =>
+    (a._1 + b._1, a._2 + b._2, a._3 + b._3, a._4 + b._4)
 }
 println("🔄 [T8: reduceByKey()] Aggregated distance, duration and congestion sums per hour")
 
