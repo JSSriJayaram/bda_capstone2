@@ -129,10 +129,6 @@ services:
         volumes:
             - ./data/raw:/app/data:ro
             - ./review3/output:/app/review3/output
-            - ./review3/python:/app/review3/python
-            - ./review3/scala:/app/review3/scala
-            - ./review3/run_all.sh:/app/review3/run_all.sh
-            - ./review3/data:/app/review3/data
         environment:
             - SPARK_DRIVER_MEMORY=4g
         stdin_open: true

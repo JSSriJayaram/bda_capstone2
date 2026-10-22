@@ -1,223 +1,252 @@
 # 🚕 NYC Taxi Demand & Fare Intelligence System
-## BDA Review 3 — Apache Spark, Scala & PySpark (23CSE352)
+## BDA Review 3 — Apache Spark, Scala & PySpark (23CSE352 — 15 Marks)
 
-> **Case Study:** New York City Yellow Taxi operational records (~3.7M raw trips / 2.5M clean trips). We analyze spatial-temporal demand dynamics, payment tipping behavior, and deploy predictive Machine Learning models (Logistic Regression vs. Random Forest) on Apache Spark.
+> **Case Study:** NYC Yellow Taxi operational dataset (~3.7M raw trips / 2.5M clean trips). We analyze spatial-temporal demand dynamics, payment tipping behavior, route speed bottlenecks, and deploy 4 Machine Learning models (2 Regression + 2 Classification) using Apache Spark.
 
 ---
 
-## ⚡ Quick Start (Zero Setup via Docker)
+## 👥 Student Work Distribution (4 Students — Complete Coverage)
 
-If you don't want to install Java 21 or Apache Spark on your host machine, you can run the entire pipeline in an isolated container in **one command**:
+Each student implements a complete, self-contained **Scala + Spark RDD** pipeline satisfying the 15-mark rubric:
+- $\ge 3$ Transformations (`map`, `filter`, `reduceByKey`, `mapValues`, `flatMap`)
+- $\ge 2$ Actions (`count`, `take`, `reduce`, `collect`)
+- Key-Value RDD operations
+- Partition count inspection
+- RDD Lineage graph & DAG explanation
+- In-memory caching with `persist(StorageLevel.MEMORY_AND_DISK)`
+
+| Student | Assigned Topic | Scala RDD Script | ML Model Assignment |
+|---|---|---|---|
+| **Student 1** | **Temporal Demand Spikes & Hotspots** | [`scala/Student1_SpatialDemandRDD.scala`](file:///Users/s4n/Documents/clg/sem7/bda_capstone2/review3/scala/Student1_SpatialDemandRDD.scala) | **Linear Regression** (Upfront Fare Baseline) |
+| **Student 2** | **Revenue Economics & Airport Tolls** | [`scala/Student2_RevenueTollsRDD.scala`](file:///Users/s4n/Documents/clg/sem7/bda_capstone2/review3/scala/Student2_RevenueTollsRDD.scala) | **Random Forest Regressor** (Non-linear Fare Engine) |
+| **Student 3** | **Digital Payment & Tipping Dynamics** | [`scala/Student3_TippingBehaviorRDD.scala`](file:///Users/s4n/Documents/clg/sem7/bda_capstone2/review3/scala/Student3_TippingBehaviorRDD.scala) | **Logistic Regression** (Dispatch Classification) |
+| **Student 4** | **Traffic Speed & Congestion Surcharges** | [`scala/Student4_CongestionDurationRDD.scala`](file:///Users/s4n/Documents/clg/sem7/bda_capstone2/review3/scala/Student4_CongestionDurationRDD.scala) | **Random Forest Classifier** (Priority Matching) |
+
+---
+
+## 🚀 Complete Commands to Run Review 3 Pipeline
+
+You can run the Review 3 pipeline either using **Docker** (recommended, zero-configuration) or **Locally** using a Python virtual environment (`venv`).
+
+---
+
+### Option 1: Run Full Pipeline via Docker (Recommended)
+
+Make sure Docker Desktop is running, then execute:
 
 ```bash
-# Option A: From inside the review3/ folder
+# 1. Navigate to review3 directory
 cd review3
-docker compose up --build
 
-# Option B: From the repository root (bda_capstone2/)
-docker compose run --rm spark-review3
+# 2. Run the entire pipeline in one command (builds & mounts automatically)
+docker compose up --abort-on-container-exit
 ```
-This automatically builds the environment with OpenJDK 21 + Python 3.10 + PySpark, mounts the raw dataset, executes all 4 pipeline stages, and saves the generated charts to `review3/output/`.
 
----
-
-## 🛠️ Step-by-Step Commands Run in the Pipeline
-
-### Option 1: Running Individual Stages via Docker (Isolated)
-
-You can run individual pipeline stages directly inside the built container image:
-
+#### Run via Direct Docker Command:
 ```bash
-# Build the Docker image once
-docker compose build
-
-# Stage 1: Data Cleaning & Exploratory Data Analysis (PySpark)
+cd review3
 docker run --rm \
-  -v "$(pwd)/../data/raw:/app/data:ro" \
-  -v "$(pwd)/output:/app/review3/output" \
-  -v "$(pwd)/python:/app/review3/python:ro" \
-  -v "$(pwd)/scala:/app/review3/scala:ro" \
-  -v "$(pwd)/data:/app/review3/data" \
-  review3-spark-review3 spark-submit --master "local[*]" --driver-memory 4g python/01_preprocessing_eda.py
-
-# Stage 2: Scala + Spark RDD Processing (Non-interactive)
-docker run --rm \
-  -v "$(pwd)/../data/raw:/app/data:ro" \
-  -v "$(pwd)/output:/app/review3/output" \
-  -v "$(pwd)/python:/app/review3/python:ro" \
-  -v "$(pwd)/scala:/app/review3/scala:ro" \
-  -v "$(pwd)/data:/app/review3/data" \
-  review3-spark-review3 bash -c "printf ':load scala/NycTaxiRDD.scala\n:quit\n' | spark-shell --master 'local[*]' --driver-memory 4g"
-
-# Stage 3: Machine Learning Pipeline (PySpark MLlib)
-docker run --rm \
-  -v "$(pwd)/../data/raw:/app/data:ro" \
-  -v "$(pwd)/output:/app/review3/output" \
-  -v "$(pwd)/python:/app/review3/python:ro" \
-  -v "$(pwd)/scala:/app/review3/scala:ro" \
-  -v "$(pwd)/data:/app/review3/data" \
-  review3-spark-review3 spark-submit --master "local[*]" --driver-memory 4g python/02_ml_model.py
-
-# Stage 4: Generate Charts & Executive Dashboard
-docker run --rm \
-  -v "$(pwd)/../data/raw:/app/data:ro" \
-  -v "$(pwd)/output:/app/review3/output" \
-  -v "$(pwd)/python:/app/review3/python:ro" \
-  -v "$(pwd)/scala:/app/review3/scala:ro" \
-  -v "$(pwd)/data:/app/review3/data" \
-  review3-spark-review3 python3 python/03_visualizations.py
+  -v $(pwd)/../data/raw:/app/data:ro \
+  -v $(pwd)/output:/app/review3/output \
+  -v $(pwd)/data:/app/review3/data \
+  -v $(pwd)/questions:/app/review3/questions \
+  -v $(pwd)/python:/app/review3/python:ro \
+  -v $(pwd)/scala:/app/review3/scala:ro \
+  -v $(pwd)/run_all.sh:/app/review3/run_all.sh:ro \
+  review3-spark-review3:latest bash run_all.sh
 ```
 
 ---
 
-## 💻 Quick Start (Running Locally on Host Machine)
+### Option 2: Run Full Pipeline Locally with `venv`
 
-### 1. Prerequisites
-- **Java**: OpenJDK 17 or OpenJDK 21 *(Note: Java 25 has known Hadoop auth issues)*
-  ```bash
-  # macOS (Homebrew)
-  brew install openjdk@21
-  ```
-- **Python Dependencies**:
-  ```bash
-  pip3 install -r requirements.txt
-  ```
+If running without Docker, use the project virtual environment:
 
-### 2. Run the Full Pipeline
 ```bash
+# 1. From the project root, create and activate venv
+cd /Users/s4n/Documents/clg/sem7/bda_capstone2
+python3 -m venv venv
+source venv/bin/activate
+
+# 2. Install required dependencies
+pip install -r review3/requirements.txt
+
+# 3. Run the automated master pipeline
 cd review3
 bash run_all.sh
 ```
 
-### 3. Run Steps Individually on Host
+---
 
-#### **Step 1: Data Cleaning & Exploratory Data Analysis (PySpark)**
+### Option 3: Run Pipeline Steps Individually
+
+If you want to run each stage separately:
+
 ```bash
+# Activate your environment first (or run inside Docker container)
+cd review3
+
+# Step 1: Data Preprocessing & Exploratory Data Analysis (PySpark)
 python3 python/01_preprocessing_eda.py
-# OR
-spark-submit --master "local[*]" --driver-memory 4g python/01_preprocessing_eda.py
+# (Or using spark-submit)
+# spark-submit --master "local[*]" --driver-memory 4g python/01_preprocessing_eda.py
+
+# Step 2: 4-Model Machine Learning Pipeline (2 Regression + 2 Classification)
+python3 python/02_ml_model.py
+
+# Step 3: Executive Analytics Dashboard (6 Panels)
+python3 python/03_visualizations.py
+
+# Step 4: Individual Student Question Visualizations (Q1 to Q4)
+python3 python/generate_questions_visualizations.py
 ```
-*Outputs: Cleans 1.22M outlier records, produces summary statistics, and saves `hourly_demand.csv`, `zone_stats.csv`, and `payment_tip_stats.csv`.*
 
-#### **Step 2: Scala + Spark RDD Processing**
+---
+
+### Option 4: Run Scala Spark RDD Analysis (Viva Demo)
+
+#### In Docker `spark-shell` (No local Spark or Java installation required):
 ```bash
-# Non-interactive execution:
-printf ":load scala/NycTaxiRDD.scala\n:quit\n" | spark-shell --master "local[*]" --driver-memory 4g
+cd review3
+docker run -it --rm \
+  -v $(pwd)/../data/raw:/app/data:ro \
+  -v $(pwd)/data:/app/review3/data \
+  -v $(pwd)/scala:/app/review3/scala:ro \
+  review3-spark-review3:latest spark-shell --master "local[*]" --driver-memory 4g
+```
 
-# Interactive execution (recommended for demo):
+#### In Local `spark-shell`:
+```bash
+cd review3
 spark-shell --driver-memory 4g
+```
+
+#### Inside `spark-shell` prompt, execute any student's script:
+```scala
+// Student 1 [Q1]: Peak Demand & Spatial Pickup Density
+:load scala/Student1_SpatialDemandRDD.scala
+
+// Student 2 [Q2]: Revenue Economics & Airport Tolls
+:load scala/Student2_RevenueTollsRDD.scala
+
+// Student 3 [Q3]: Digital Payment & Tipping Dynamics
+:load scala/Student3_TippingBehaviorRDD.scala
+
+// Student 4 [Q4]: Traffic Velocity & Congestion Bottlenecks
+:load scala/Student4_CongestionDurationRDD.scala
+
+// Master Pipeline: Runs all 4 students in sequence
 :load scala/NycTaxiRDD.scala
 ```
-*Outputs: Demonstrates RDD lineage DAG, partition count, `cache()` in memory/disk, 5 lazy transformations (`map`, `filter`, `reduceByKey`, `mapValues`, `flatMap`), and 4 eager actions (`count`, `take`, `reduce`, `collect`).*
 
-#### **Step 3: Machine Learning Pipeline (PySpark MLlib)**
+---
+
+## 🎓 Viva Demo Guide: Running Each Student's Scala Script
+
+Launch the interactive Spark shell:
 ```bash
-python3 python/02_ml_model.py
-# OR
-spark-submit --master "local[*]" --driver-memory 4g python/02_ml_model.py
+spark-shell --driver-memory 4g
 ```
-*Outputs: Trains Logistic Regression vs Random Forest on 80/20 train-test split, computes ROC-AUC, Accuracy, Precision, Recall, F1, and saves `ml_results.json`.*
 
-#### **Step 4: Generate Analytical Charts & Dashboard**
-```bash
-python3 python/03_visualizations.py
+Then load the script for the student being evaluated:
+
+#### **Student 1: Spatial Demand & Hourly Surge**
+```scala
+:load scala/Student1_SpatialDemandRDD.scala
 ```
-*Outputs: Generates 5 high-resolution individual charts and a 6-panel executive dashboard saved to `output/dashboard.png`.*
+*Demonstrates: Hourly frequency RDD, `reduceByKey`, surge alert `flatMap`, peak window identification (`reduce`), RDD DAG lineage.*
 
----
-
-## 🔧 Bugs Diagnosed & Fixed in Review 3 Pipeline
-
-During testing, the following issues were identified and resolved across Docker and script layers:
-
-1. **Debian 13 OpenJDK Package**: In `python:3.10-slim` (Debian 13 trixie), `openjdk-17-jdk-headless` is not packaged. Fixed `Dockerfile` to use `default-jdk-headless` which provides OpenJDK 21 LTS.
-2. **Architecture-Independent `JAVA_HOME`**: Replaced hardcoded `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64` in `Dockerfile` with `/usr/lib/jvm/default-java`, making builds portable across both Apple Silicon (ARM64) and Linux (AMD64).
-3. **Parquet Input Path Resolution**: `01_preprocessing_eda.py` failed with `PATH_NOT_FOUND` when reading from `/app/data/`. Added fallback candidate search across `data/`, `../data/raw/`, and `/app/data/`, and ensured `parquet_file` is not overwritten.
-4. **Read-Only Volume Write Conflict**: `NycTaxiRDD.scala` attempted to write Parquet output to `dataPath.getParent` (`/app/data`), which is mounted read-only (`:ro`). Fixed `dataDir` to target writable `data/` and export to `yellow_taxi_rdd_processed.parquet`.
-5. **Timestamp ClassCastException in Scala RDD**: `tpep_pickup_datetime` was cast strictly to `java.sql.Timestamp`, throwing `ClassCastException` in Spark 4 and causing `cleanRDD.count()` to return 0. Added polymorphic timestamp parsing supporting `Instant`, `LocalDateTime`, `Timestamp`, and epoch millis.
-6. **Scala Line-by-Line Type Inference**: Multi-line method chaining in `reduceByKey` failed under line-by-line interpretation. Added explicit parameter types `(a: (Double, Long), b: (Double, Long))` and wrapped expressions in parentheses.
-7. **Schema Consistency for ML Pipeline**: Standardized feature column names (`PULocationID` / `pu_location_id`) and added dynamic `pickup_dayofweek` fallback in `02_ml_model.py`.
-8. **Automated Master Orchestration**: Updated `run_all.sh` to automatically invoke Step 2 non-interactively via `printf ':load scala/NycTaxiRDD.scala\n:quit\n' | spark-shell`.
-
----
-
-## 📁 Project Directory Structure
-
+#### **Student 2: Revenue, Tolls & Airport Surcharges**
+```scala
+:load scala/Student2_RevenueTollsRDD.scala
 ```
-review3/
-├── Dockerfile                         # Isolated container build (Java 17 + PySpark)
-├── docker-compose.yml                 # Standalone Docker compose config
-├── requirements.txt                   # Python package dependencies
-├── run_all.sh                         # Master bash orchestrator script
-├── README.md                          # Complete project guide & documentation
-│
-├── scala/
-│   └── NycTaxiRDD.scala               # Scala RDD processing (5 trans, 4 actions, DAG, cache)
-│
-├── python/
-│   ├── 01_preprocessing_eda.py         # PySpark cleaning & exploratory analytics
-│   ├── 02_ml_model.py                  # PySpark MLlib (Logistic Regression vs Random Forest)
-│   └── 03_visualizations.py            # Matplotlib & Seaborn dashboard generator
-│
-└── output/                            # Generated artifacts & charts
-    ├── dashboard.png                  # Combined 6-panel executive summary
-    ├── viz1_hourly_demand.png         # Hourly demand distribution
-    ├── viz2_top_zones.png             # Top 10 pickup zones by revenue & trips
-    ├── viz3_payment_tips.png          # Payment type vs. tipping behavior
-    ├── viz4_feature_importance.png     # Random Forest feature importance rankings
-    ├── viz5_model_evaluation.png      # ROC curve, confusion matrices & metrics comparison
-    ├── ml_results.json                # Benchmark metrics JSON
-    ├── hourly_demand.csv              # Hourly aggregate statistics
-    ├── zone_stats.csv                 # Zone aggregate statistics
-    ├── payment_tip_stats.csv          # Payment method statistics
-    ├── lr_predictions.csv             # Logistic Regression test predictions sample
-    └── rf_predictions.csv             # Random Forest test predictions sample
+*Demonstrates: Airport route tagging (JFK/LGA/EWR), average toll calculation with `mapValues`, gross revenue aggregation, max revenue route (`reduce`).*
+
+#### **Student 3: Payment Modes & Customer Tipping Behavior**
+```scala
+:load scala/Student3_TippingBehaviorRDD.scala
+```
+*Demonstrates: Payment method mapping, credit card vs cash tip accumulation, generous tip event emission (>30%), maximum tip recorded (`reduce`).*
+
+#### **Student 4: Traffic Congestion, Route Speed & Surcharges**
+```scala
+:load scala/Student4_CongestionDurationRDD.scala
+```
+*Demonstrates: In-flight velocity calculation (mph), gridlock filtering (<6 mph), hourly congestion surcharge revenue, longest duration trip (`reduce`).*
+
+#### **Master Unified Runner (All 4 Students):**
+```scala
+:load scala/NycTaxiRDD.scala
 ```
 
 ---
 
-## 🔧 Architecture & Technology Justification
+## 🤖 The 4 Machine Learning Models
 
-| Tool | Application Scope | Technical Justification |
-|---|---|---|
-| **Scala + Spark RDD** | Data ingestion, low-level transformations, lineage & caching | Spark is natively written in Scala. Scala RDDs run on the JVM without serialization overhead. It provides direct access to RDD internals (`toDebugString()`, partition inspection, `persist()`). |
-| **PySpark MLlib** | Feature engineering & predictive classification | PySpark DataFrame ML Pipelines (`VectorAssembler` + `StandardScaler`) mirror industry-standard scikit-learn patterns, integrating cleanly with downstream data science tools. |
-| **Matplotlib / Seaborn** | Visualization & Dashboard generation | Mature, publication-grade data visualization ecosystem with no direct Scala counterpart. |
-| **Docker** | Portability & Containerization | Solves cross-platform JVM incompatibilities (e.g. Java 25 deprecation of Hadoop security methods) by providing a reproducible Debian/OpenJDK environment. |
+### Part 1: Regression (Dynamic Upfront Fare Estimation)
+- **Business Problem:**
+  - *Context:* Riders demand upfront price guarantees before booking. Underquoting fares causes driver cancellations; overquoting hurts conversion.
+  - *Target:* `fare_amount` (Continuous USD).
+- **Models:**
+  1. **Linear Regression (with ElasticNet regularization):** Interpretable linear baseline.
+  2. **Random Forest Regressor (40 trees, depth 8):** Captures non-linearities such as JFK flat-rate fares ($70) and congestion surcharge steps.
 
----
-
-## 📊 Analytical Decisions & Insights
-
-1. **Peak Demand Windows**:
-   - Lowest demand occurs at **4:00 AM** (12,260 trips).
-   - Demand rises sharply during the morning rush (8:00 AM – 10:00 AM) and peaks during the evening commute (**5:00 PM – 7:00 PM**, reaching **181,715 trips/hr**).
-   - *Operational Recommendation:* Reposition fleet vehicles toward Midtown Manhattan (Zones 161, 237, 236) by 4:30 PM.
-
-2. **Digital Payment Impact on Tipping**:
-   - **87.0%** of trips are paid via Credit Card, averaging **$3.85 / 18.4%** tip per trip.
-   - Cash transactions record negligible tips in digital meter logs due to direct cash handoffs.
-
-3. **Airport Surge**:
-   - The highest average fare per hour occurs at **5:00 AM ($29.03)** and **6:00 AM ($25.16)** due to early-morning airport outbound trips (JFK/LaGuardia flat and premium rates).
+#### Regression Benchmark Results:
+| Metric | Linear Regression | Random Forest Regressor | Winner |
+|---|---|---|---|
+| **$R^2$ Score** | 0.8668 | **0.8954** | **Random Forest Regressor ✅** |
+| **RMSE ($)** | $6.64 | **$5.89** | **Random Forest Regressor ✅** |
+| **MAE ($)** | $2.83 | **$1.73** | **Random Forest Regressor ✅** |
+| **Training Time** | **2.80s** | 8.20s | Linear Regression (Faster) |
 
 ---
 
-## 🤖 Machine Learning Model Performance
+### Part 2: Classification (High-Value Ride Dispatch Priority)
+- **Business Problem:**
+  - *Context:* Drivers waste 35% of their working hours cruising empty for low-fare trips. Dispatch engines classify incoming rides as High-Value (Fare $\ge \$15.00$) to prioritize high-rated drivers and improve driver retention.
+  - *Target:* `high_fare_label` (Binary: 1 if Fare $\ge \$15.00$, else 0).
+- **Models:**
+  3. **Logistic Regression Classifier:** Probabilistic classification baseline.
+  4. **Random Forest Classifier (40 trees, depth 8):** Ensemble tree classifier capturing non-linear spatial-temporal boundaries.
 
-- **Target Problem:** Binary classification predicting whether a trip is high-value (`label = 1` if fare $> \$12.80$ median, else `0`).
-- **Input Features (8):** `trip_distance`, `pickup_hour`, `pickup_dayofweek`, `passenger_count`, `PULocationID`, `trip_duration_min`, `is_weekend`, `avg_speed_mph`.
-- **Dataset Split:** 80% Training ($2,001,842$ records) / 20% Testing ($500,691$ records).
-
+#### Classification Benchmark Results:
 | Metric | Logistic Regression | Random Forest Classifier | Winner |
 |---|---|---|---|
-| **Accuracy** | 96.57% | **97.96%** | **Random Forest ✅** |
-| **Weighted Precision** | 0.9674 | **0.9796** | **Random Forest ✅** |
-| **Weighted Recall** | 0.9657 | **0.9796** | **Random Forest ✅** |
-| **F1-Score** | 0.9657 | **0.9796** | **Random Forest ✅** |
-| **AUC-ROC** | 0.9945 | **0.9973** | **Random Forest ✅** |
+| **Accuracy** | 90.83% | **98.06%** | **Random Forest Classifier ✅** |
+| **Weighted Precision** | 0.9204 | **0.9806** | **Random Forest Classifier ✅** |
+| **Weighted Recall** | 0.9083 | **0.9806** | **Random Forest Classifier ✅** |
+| **F1-Score** | 0.9059 | **0.9805** | **Random Forest Classifier ✅** |
+| **AUC-ROC** | 0.9922 | **0.9968** | **Random Forest Classifier ✅** |
+| **Training Time** | **2.06s** | 6.68s | Logistic Regression (Faster) |
 
-### Top Predictive Features (from Random Forest):
-1. **`trip_duration_min`** (69.51% importance) — Meter ticking during traffic delay is the primary fare contributor.
-2. **`trip_distance`** (24.49% importance) — Base distance traveled.
-3. **`avg_speed_mph`** (5.13% importance) — Highlights congestion conditions.
+---
+
+### 📊 Top Predictive Features (from Random Forest Models):
+1. **`trip_distance`** (40.52% Regression / 30.41% Classification) — Physical distance is the core fare driver.
+2. **`trip_duration_min`** (38.28% Regression / 61.32% Classification) — Manhattan traffic meter ticking drives premium pricing.
+3. **`avg_speed_mph`** (15.99% Regression / 6.57% Classification) — Reflects gridlock conditions.
+4. **`PULocationID`** (4.46% Regression / 1.49% Classification) — Distinguishes airport pickup zones from outer boroughs.
+
+---
+
+## 📁 Generated Outputs in `review3/output/`
+
+```
+output/
+├── dashboard.png                      # 6-Panel Master Executive Dashboard
+├── viz1_student1_demand.png           # Student 1: Hourly Demand Distribution
+├── viz2_student2_revenue.png          # Student 2: Airport vs Non-Airport Economics
+├── viz3_student3_tips.png             # Student 3: Payment Method vs Tipping Rates
+├── viz4_student4_speed.png            # Student 4: Manhattan Velocity Bottlenecks
+├── viz5_regression_models.png         # Regression Models: R² and MAE Comparisons
+├── viz6_classification_models.png     # Classification Models: Accuracy, F1, ROC
+└── ml_results_4models.json            # Machine-readable benchmarks JSON
+```
+
+---
+
+## 🔧 Technology Architecture Justification
+
+- **Scala for Spark RDD**: Spark's native language. Zero JVM serialization overhead; authentic demonstration of low-level RDD internals (`toDebugString`, partitions, `persist`).
+- **PySpark for MLlib**: PySpark DataFrames integrate seamlessly with modern Machine Learning pipelines (`VectorAssembler`, `StandardScaler`) and allow direct visualization in Python (`matplotlib`, `seaborn`).
+- **Docker**: Encapsulates OpenJDK 17 and Python 3.10 to eliminate host OS environment conflicts.

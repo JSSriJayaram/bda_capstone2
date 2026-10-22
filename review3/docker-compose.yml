@@ -15,11 +15,11 @@ services:
       - ../data/raw:/app/data:ro
       # Persist generated outputs, charts, and models back to host
       - ./output:/app/review3/output
-      # Mount scripts and data for live execution and persistence
-      - ./python:/app/review3/python
-      - ./scala:/app/review3/scala
-      - ./run_all.sh:/app/review3/run_all.sh
       - ./data:/app/review3/data
+      - ./questions:/app/review3/questions
+      - ./python:/app/review3/python:ro
+      - ./scala:/app/review3/scala:ro
+      - ./run_all.sh:/app/review3/run_all.sh:ro
     environment:
       - SPARK_DRIVER_MEMORY=4g
     stdin_open: true

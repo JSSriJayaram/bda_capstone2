@@ -204,74 +204,50 @@ Review 3 extends the batch pipeline with Apache Spark. It uses PySpark DataFrame
 
 ### Review 3 Quickstart
 
-Review 3 uses the January 2026 Parquet dataset from `data/raw/` and writes generated artifacts to `review3/output/`. Docker is the recommended, fully tested option (OpenJDK 21 + Python 3.10 + PySpark 4.2.0).
+Review 3 uses the January 2026 Parquet dataset from `data/raw/` and writes generated artifacts to `review3/output/`. Docker is the most reproducible option because the included image provides Python 3.10, OpenJDK 17, and PySpark.
 
-#### 1. Full Pipeline in One Command (Docker)
+#### Run with Docker (Recommended)
 
 ```bash
-# Option A: From inside the review3/ folder
 cd review3
-docker compose up --build
-
-# Option B: From the repository root
-docker compose run --rm spark-review3
+docker compose up --abort-on-container-exit
 ```
 
-#### 2. Run Individual Stages via Docker
+The compose service mounts `../data/raw` read-only and persists all outputs, data, and charts to `review3/output/` and `review3/questions/`.
+
+#### Run locally with `venv`
 
 ```bash
+# 1. From project root, activate or create venv
+python3 -m venv venv
+source venv/bin/activate
+
+# 2. Install dependencies & run
+pip install -r review3/requirements.txt
 cd review3
-
-# Stage 1: Data Preprocessing & EDA (PySpark)
-docker run --rm \
-  -v "$(pwd)/../data/raw:/app/data:ro" \
-  -v "$(pwd)/output:/app/review3/output" \
-  -v "$(pwd)/python:/app/review3/python:ro" \
-  -v "$(pwd)/scala:/app/review3/scala:ro" \
-  -v "$(pwd)/data:/app/review3/data" \
-  review3-spark-review3 spark-submit --master "local[*]" --driver-memory 4g python/01_preprocessing_eda.py
-
-# Stage 2: Scala + Spark RDD Processing
-docker run --rm \
-  -v "$(pwd)/../data/raw:/app/data:ro" \
-  -v "$(pwd)/output:/app/review3/output" \
-  -v "$(pwd)/python:/app/review3/python:ro" \
-  -v "$(pwd)/scala:/app/review3/scala:ro" \
-  -v "$(pwd)/data:/app/review3/data" \
-  review3-spark-review3 bash -c "printf ':load scala/NycTaxiRDD.scala\n:quit\n' | spark-shell --master 'local[*]' --driver-memory 4g"
-
-# Stage 3: Machine Learning Classification (PySpark MLlib)
-docker run --rm \
-  -v "$(pwd)/../data/raw:/app/data:ro" \
-  -v "$(pwd)/output:/app/review3/output" \
-  -v "$(pwd)/python:/app/review3/python:ro" \
-  -v "$(pwd)/scala:/app/review3/scala:ro" \
-  -v "$(pwd)/data:/app/review3/data" \
-  review3-spark-review3 spark-submit --master "local[*]" --driver-memory 4g python/02_ml_model.py
-
-# Stage 4: Visualizations & Dashboard
-docker run --rm \
-  -v "$(pwd)/../data/raw:/app/data:ro" \
-  -v "$(pwd)/output:/app/review3/output" \
-  -v "$(pwd)/python:/app/review3/python:ro" \
-  -v "$(pwd)/scala:/app/review3/scala:ro" \
-  -v "$(pwd)/data:/app/review3/data" \
-  review3-spark-review3 python3 python/03_visualizations.py
-```
-
-#### 3. Run Locally on Host Machine
-
-```bash
-cd review3
-pip3 install -r requirements.txt
 bash run_all.sh
+```
 
-# Or interactive Scala shell:
+The master script runs preprocessing, ML training, and visualization. Scala RDD processing is intentionally demonstrated interactively:
+
+```bash
+cd review3
 spark-shell --driver-memory 4g
+```
+
+Then run:
+
+```scala
 :load scala/NycTaxiRDD.scala
 ```
 
-*(See detailed guide and bug fixes in [`review3/README.md`](review3/README.md))*
+For individual stages:
+
+```bash
+spark-submit --master "local[*]" --driver-memory 4g python/01_preprocessing_eda.py
+spark-submit --master "local[*]" --driver-memory 4g python/02_ml_model.py
+python3 python/03_visualizations.py
+```
 
 ### Scala RDD Demonstration
 

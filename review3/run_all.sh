@@ -11,32 +11,35 @@ set -e
 # Setup PATH for homebrew tools and Python scripts (spark-submit, spark-shell)
 eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null || true
 
-# Auto-detect JAVA_HOME if not already exported or if path doesn't exist
-if [ -z "$JAVA_HOME" ] || [ ! -d "$JAVA_HOME" ]; then
-    if [ -d "/usr/lib/jvm/default-java" ]; then
-        export JAVA_HOME="/usr/lib/jvm/default-java"
-    elif [ -d "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home" ]; then
-        export JAVA_HOME="/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home"
-    elif [ -d "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home" ]; then
+# Auto-detect JAVA_HOME if not already exported
+if [ -z "$JAVA_HOME" ]; then
+    if [ -d "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home" ]; then
         export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
-    elif command -v /usr/libexec/java_home >/dev/null 2>&1 && /usr/libexec/java_home -v 21 >/dev/null 2>&1; then
+    elif command -v /usr/libexec/java_home >/dev/null 2>&1; then
         export JAVA_HOME=$(/usr/libexec/java_home -v 21 2>/dev/null || /usr/libexec/java_home 2>/dev/null)
-    elif [ -d "/usr/lib/jvm/java-21-openjdk-arm64" ]; then
-        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-arm64"
-    elif [ -d "/usr/lib/jvm/java-17-openjdk-arm64" ]; then
-        export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-arm64"
     elif [ -d "/usr/lib/jvm/java-21-openjdk-amd64" ]; then
         export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
     elif [ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]; then
         export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+    elif [ -d "/usr/lib/jvm/java-21-openjdk-arm64" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-arm64"
+    elif [ -d "/usr/lib/jvm/java-17-openjdk-arm64" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-arm64"
     fi
 fi
 
-# Add Java to PATH
+# Add Java and user Python scripts to PATH
 if [ -n "$JAVA_HOME" ]; then
     export PATH="$JAVA_HOME/bin:$PATH"
 fi
-export PATH="$HOME/.local/bin:$PATH"
+# Use venv if available, otherwise fall back to system Python
+VENV_DIR="$(cd "$(dirname "$0")/.." && pwd)/venv"
+if [ -d "$VENV_DIR/bin" ]; then
+    export PATH="$VENV_DIR/bin:$PATH"
+    echo "🐍 Using venv: $VENV_DIR"
+else
+    echo "⚠️  venv not found at $VENV_DIR — falling back to system Python"
+fi
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_DIR"
@@ -79,40 +82,57 @@ echo "✅ Step 1 complete — Cleaned data saved"
 echo ""
 
 # ============================================================
-# STEP 2: Scala RDD Processing (via spark-shell)
+# STEP 2: Scala RDD Processing (4 Students Individual Scripts)
 # ============================================================
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  STEP 2/4: Scala + Spark RDD Processing"
+echo "  STEP 2/4: Scala + Spark RDD Processing (4 Students)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Running Scala RDD pipeline non-interactively..."
-printf ":load scala/NycTaxiRDD.scala\n:quit\n" | spark-shell --master "local[*]" --driver-memory 4g
-
+echo "  To demo interactively in spark-shell (run per student):"
+echo "    spark-shell --driver-memory 4g"
 echo ""
-echo "✅ Step 2 complete — Scala RDD pipeline finished"
+echo "    Student 1 (Demand & Hotspots):"
+echo "      :load scala/Student1_SpatialDemandRDD.scala"
 echo ""
-
-# ============================================================
-# STEP 3: PySpark ML Model
-# ============================================================
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  STEP 3/4: Machine Learning (PySpark)"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-spark-submit \
-    --master "local[*]" \
-    --driver-memory 4g \
-    python/02_ml_model.py
-
+echo "    Student 2 (Revenue & Airport Surcharges):"
+echo "      :load scala/Student2_RevenueTollsRDD.scala"
 echo ""
-echo "✅ Step 3 complete — ML models trained and evaluated"
+echo "    Student 3 (Tipping Dynamics & Payment):"
+echo "      :load scala/Student3_TippingBehaviorRDD.scala"
+echo ""
+echo "    Student 4 (Traffic Congestion & Velocity):"
+echo "      :load scala/Student4_CongestionDurationRDD.scala"
+echo ""
+echo "    Master Pipeline (Runs all in sequence):"
+echo "      :load scala/NycTaxiRDD.scala"
 echo ""
 
 # ============================================================
-# STEP 4: Visualizations
+# STEP 3: PySpark 4-Model Machine Learning Pipeline
 # ============================================================
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  STEP 4/4: Visualizations (Python + matplotlib)"
+echo "  STEP 3/4: Machine Learning (4 Models: 2 Reg + 2 Clf)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  1. Linear Regression         (Upfront Fare Estimation)"
+echo "  2. Random Forest Regressor   (Non-linear Fare Estimation)"
+echo "  3. Logistic Regression       (High-Value Trip Dispatch)"
+echo "  4. Random Forest Classifier  (Multi-tree Dispatch Priority)"
+echo ""
+python3 python/02_ml_model.py
+
+echo ""
+echo "✅ Step 3 complete — All 4 ML models trained and evaluated"
+echo ""
+
+# ============================================================
+# STEP 4: Visualizations & 6-Panel Dashboard
+# ============================================================
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  STEP 4/4: Visualizations & Executive Dashboard"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 python3 python/03_visualizations.py
+if [ -f "python/generate_questions_visualizations.py" ]; then
+    python3 python/generate_questions_visualizations.py
+fi
 
 echo ""
 echo "============================================================"
