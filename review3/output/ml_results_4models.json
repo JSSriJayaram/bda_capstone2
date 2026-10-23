@@ -12,64 +12,64 @@
   ],
   "regression": {
     "linear_regression": {
-      "rmse": 6.757600959672719,
-      "r2": 0.8674923833726895,
-      "mae": 2.856259820344687,
-      "training_time_sec": 3.2
+      "rmse": 6.545095800657064,
+      "r2": 0.8684782478894484,
+      "mae": 2.8596032215264335,
+      "training_time_sec": 3.33
     },
     "random_forest_regressor": {
-      "rmse": 5.937638633916677,
-      "r2": 0.8976981982946403,
-      "mae": 1.703862432412284,
-      "training_time_sec": 7.83
+      "rmse": 5.612221620204524,
+      "r2": 0.9032980580943939,
+      "mae": 1.7142234091248636,
+      "training_time_sec": 7.92
     }
   },
   "classification": {
     "logistic_regression": {
-      "accuracy": 0.908580537148242,
-      "precision": 0.9206298921229317,
-      "recall": 0.908580537148242,
-      "f1": 0.9061882998804025,
-      "auc_roc": 0.9924269643794478,
-      "tp": 31955,
-      "tn": 58675,
-      "fp": 37,
-      "fn": 9082,
-      "training_time_sec": 2.73
+      "accuracy": 0.9088731410320391,
+      "precision": 0.9208938602774337,
+      "recall": 0.9088731410320392,
+      "f1": 0.9064995829895399,
+      "auc_roc": 0.9926533844739026,
+      "tp": 32143,
+      "tn": 58917,
+      "fp": 31,
+      "fn": 9099,
+      "training_time_sec": 2.95
     },
     "random_forest_classifier": {
-      "accuracy": 0.9805612086336705,
-      "precision": 0.9805569132439098,
-      "recall": 0.9805612086336706,
-      "f1": 0.9805510209810947,
-      "auc_roc": 0.9969537153987204,
-      "tp": 39927,
-      "tn": 57883,
-      "fp": 829,
-      "fn": 1110,
-      "training_time_sec": 8.46
+      "accuracy": 0.980706657351033,
+      "precision": 0.9807017640474343,
+      "recall": 0.980706657351033,
+      "f1": 0.980703301077336,
+      "auc_roc": 0.996940247313848,
+      "tp": 40228,
+      "tn": 58029,
+      "fp": 919,
+      "fn": 1014,
+      "training_time_sec": 7.99
     }
   },
   "feature_importances": {
     "regression": {
-      "trip_distance": 0.4157279302183383,
-      "trip_duration_min": 0.37355931572617673,
-      "pickup_hour": 0.0031074188703677126,
-      "pickup_dayofweek": 0.0009675171103117316,
-      "passenger_count": 0.002540604026304492,
-      "PULocationID": 0.04497459303540327,
-      "avg_speed_mph": 0.1588531317159984,
-      "is_weekend": 0.00026948929709948903
+      "trip_distance": 0.41817665198109594,
+      "trip_duration_min": 0.37278655073054595,
+      "pickup_hour": 0.002771681349656717,
+      "pickup_dayofweek": 0.001010094348154279,
+      "passenger_count": 0.002867801121665803,
+      "PULocationID": 0.04453498085096791,
+      "avg_speed_mph": 0.15758001425110785,
+      "is_weekend": 0.00027222536680560625
     },
     "classification": {
-      "trip_distance": 0.305082615832813,
-      "trip_duration_min": 0.6083701014006311,
-      "pickup_hour": 0.0013972237060675301,
-      "pickup_dayofweek": 0.0004003082394993818,
-      "passenger_count": 0.00016931729325018495,
-      "PULocationID": 0.0145822185423016,
-      "avg_speed_mph": 0.06965029374919753,
-      "is_weekend": 0.00034792123623964244
+      "trip_distance": 0.2981869137684344,
+      "trip_duration_min": 0.6138824006329973,
+      "pickup_hour": 0.0012605095972972747,
+      "pickup_dayofweek": 0.0005625119619914007,
+      "passenger_count": 0.00014490824513582623,
+      "PULocationID": 0.01490473090513105,
+      "avg_speed_mph": 0.0707627890602046,
+      "is_weekend": 0.00029523582880823025
     }
   }
 }
